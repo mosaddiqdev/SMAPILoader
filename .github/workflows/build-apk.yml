@@ -15,7 +15,7 @@ jobs:
           DEPS_TOKEN: ${{ secrets.DEPS_TOKEN }}
         run: |
           if [ -z "$DEPS_REPO" ] || [ -z "$DEPS_TOKEN" ]; then
-            echo "::error::Add repo secrets DEPS_REPO (owner/private-repo) and DEPS_TOKEN (PAT with read access to it). See the comment at the top of this job's checkout step."
+            echo "::error::Add repo secrets DEPS_REPO (owner/private-repo) and DEPS_TOKEN (PAT with read access to it)."
             exit 1
           fi
 
@@ -47,8 +47,13 @@ jobs:
         with:
           global-json-file: SMAPILoader/global.json
 
+      # Must run inside SMAPILoader so global.json pins the same SDK (and workload band) the build uses.
       - name: Install Android workload
-        run: dotnet workload install android
+        working-directory: SMAPILoader
+        run: |
+          dotnet --version
+          dotnet workload install android
+          dotnet workload list
 
       - name: Restore (downloads runtime packs)
         working-directory: SMAPILoader
