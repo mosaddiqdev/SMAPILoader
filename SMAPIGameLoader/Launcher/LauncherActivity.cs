@@ -1,25 +1,21 @@
-using _Microsoft.Android.Resource.Designer;
 using Android.App;
 using Android.Content.PM;
 using Android.OS;
 using Android.Views;
 using Android.Widget;
 using AndroidX.AppCompat.App;
-using Google.Android.Material.BottomNavigation;
+using AndroidX.Core.View;
 using SMAPIGameLoader.Launcher.Pages;
 using SMAPIGameLoader.Tool;
 using System;
-using System.Text;
 using Xamarin.Essentials;
-using static Android.Provider.DocumentsContract;
-
 
 namespace SMAPIGameLoader.Launcher;
 
 [Activity(
     Label = "SMAPI Launcher",
     MainLauncher = true,
-    Theme = "@style/Theme.Material3.DayNight.NoActionBar",
+    Theme = "@style/Theme.Charcoal",
     AlwaysRetainTaskState = true,
     LaunchMode = LaunchMode.SingleInstance,
     ScreenOrientation = ScreenOrientation.FullSensor
@@ -30,6 +26,12 @@ public class LauncherActivity : AppCompatActivity
 
     private static bool IsDeviceSupport => IntPtr.Size == 8;
 
+    private Shell _shell = null!;
+    private SheetHost _sheet = null!;
+    private TabBar _tabs = null!;
+    private PlayPage _playPage = null!;
+    private ModsPage _modsPage = null!;
+
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         Instance = this;
@@ -38,10 +40,9 @@ public class LauncherActivity : AppCompatActivity
         Platform.Init(this, savedInstanceState);
         ActivityTool.Init(this);
 
-        //assert
-        AssertRequirement();
+        if (AssertRequirement() == false)
+            return;
 
-        //ready
         SetupLauncherPage();
         SetDarkMode();
 
@@ -71,19 +72,10 @@ public class LauncherActivity : AppCompatActivity
         {
             if (StardewApkTool.IsInstalled == false)
             {
-                var currentPackage = StardewApkTool.CurrentPackageInfo;
-                if (currentPackage != null)
-                    switch (currentPackage.PackageName)
-                    {
-                        case StardewApkTool.GamePlayStorePackageName:
-                            ToastNotifyTool.Notify("Please Download Game From Play Store");
-                            break;
-                        case StardewApkTool.GameGalaxyStorePackageName:
-                            ToastNotifyTool.Notify("Please Download Game From Galaxy Store");
-                            break;
-                    }
+                if (StardewApkTool.CurrentPackageInfo != null)
+                    ToastNotifyTool.Notify("Stardew Valley is installed, but its split APKs are incomplete. Reinstall the game.");
                 else
-                    ToastNotifyTool.Notify("Please Download Game From Play Store Or Galaxy Store");
+                    ToastNotifyTool.Notify("Stardew Valley isn’t installed.");
 
                 return false;
             }
@@ -97,73 +89,75 @@ public class LauncherActivity : AppCompatActivity
         return true;
     }
 
-    private void AssertRequirement()
+    private bool AssertRequirement()
     {
         //check if 32bit not support
         if (IsDeviceSupport is false)
         {
-            ToastNotifyTool.Notify("Not support on device 32bit");
+            ToastNotifyTool.Notify("This device is 32-bit, which the launcher doesn’t support.");
             Finish();
-            return;
+            return false;
         }
 
         //Assert Game Requirement
         if (AssetGameVerify() == false)
         {
             Finish();
-            return;
+            return false;
         }
+
+        return true;
     }
-
-    private const int HomeId = 1;
-    private const int ModsId = 2;
-
-    private FrameLayout _container = null!;
-    private View _homePage = null!;
-    private ModManagerPage _modPage = null!;
-    private BottomNavigationView _nav = null!;
 
     private void SetupLauncherPage()
     {
-        _container = new FrameLayout(this);
-        _container.LayoutParameters = new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MatchParent, 0, 1f);
+        // draw behind the system bars; Shell pads the content back inside them
+        WindowCompat.SetDecorFitsSystemWindows(Window, false);
 
-        _homePage = new HomePage(this);
-        _modPage = new ModManagerPage(this);
-        _container.AddView(_homePage);
-        _container.AddView(_modPage);
+        _shell = new Shell(this);
+        _sheet = new SheetHost(this);
 
-        // Bottom navigation อยู่ล่างสุด
-        _nav = new BottomNavigationView(this);
-        _nav.SelectedItemId = HomeId;
-        _nav.Menu.Add(0, HomeId, 0, "Home").SetIcon(Android.Resource.Drawable.IcMenuMyCalendar);
-        _nav.Menu.Add(0, ModsId, 1, "Mods").SetIcon(Android.Resource.Drawable.IcMenuAgenda);
-        _nav.ItemSelected += (s, e) =>
-        {
-            ShowPage(e.Item!.ItemId);
-            e.Handled = true;
-        };
+        var pages = new FrameLayout(this);
+        _tabs = new TabBar(this, "Play", "Mods");
+        _modsPage = new ModsPage(this, _sheet);
+        _playPage = new PlayPage(this, _sheet, () => _tabs.Select(1));
+        pages.AddView(_playPage, new FrameLayout.LayoutParams(Ui.Match, Ui.Match));
+        pages.AddView(_modsPage, new FrameLayout.LayoutParams(Ui.Match, Ui.Match));
 
+        _tabs.Selected += ShowPage;
 
-        // Root: แนวตั้ง ใช้เต็มจอ
-        var root = new LinearLayout(this) { Orientation = Orientation.Vertical };
-        root.LayoutParameters = new ViewGroup.LayoutParams(
-            ViewGroup.LayoutParams.MatchParent,
-            ViewGroup.LayoutParams.MatchParent);
+        _shell.Body.AddView(pages, new LinearLayout.LayoutParams(Ui.Match, 0, 1f));
+        _shell.Body.AddView(_tabs, new LinearLayout.LayoutParams(Ui.Match, Ui.Wrap));
+        _shell.AddView(_sheet, new FrameLayout.LayoutParams(Ui.Match, Ui.Match));
+        SetContentView(_shell);
 
-        root.AddView(_container);
-        root.AddView(_nav);
-        SetContentView(root);
-
-        // run first page
-        ShowPage(HomeId);
+        _tabs.Select(0);
     }
 
-    private void ShowPage(int itemId)
+    private void ShowPage(int index)
     {
-        _homePage.Visibility = itemId == HomeId ? ViewStates.Visible : ViewStates.Gone;
-        _modPage.Visibility = itemId == ModsId ? ViewStates.Visible : ViewStates.Gone;
+        _sheet.Hide();
+        _playPage.Visibility = index == 0 ? ViewStates.Visible : ViewStates.Gone;
+        _modsPage.Visibility = index == 1 ? ViewStates.Visible : ViewStates.Gone;
+
+        if (index == 0)
+            _playPage.Refresh();
+        else
+            _modsPage.Reload();
+    }
+
+    protected override void OnResume()
+    {
+        base.OnResume();
+        _playPage?.Refresh();
+    }
+
+    public override void OnBackPressed()
+    {
+        if (_sheet != null && _sheet.IsOpen)
+            _sheet.Hide();
+        else
+            base.OnBackPressed();
     }
 
     public void OnClickStartGame()
