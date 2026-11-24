@@ -1,4 +1,4 @@
-﻿using Android.App;
+using Android.App;
 using Android.Content.PM;
 using Android.OS;
 using System;
@@ -41,6 +41,13 @@ internal static class StardewApkTool
 
     public static PackageInfo CurrentPackageInfo => _currentPackageInfo;
 
+    // Installed APK layout is detected from what Android reports, not from the install source:
+    //  - split install (Play Store / bundletool): base + split_config.arm64 + split_content
+    //  - merged single APK ("full" apk, Galaxy Store): everything lives in the base APK
+    static IList<string>? SplitApks => CurrentPackageInfo?.ApplicationInfo?.SplitSourceDirs;
+    static string? FindSplit(string key) => SplitApks?.FirstOrDefault(path => path.Contains(key));
+    static bool UseSplitApks => IsGameFromPlayStore && SplitApks?.Count > 0;
+
     public static bool IsInstalled
     {
         get
@@ -48,15 +55,11 @@ internal static class StardewApkTool
             if (CurrentPackageInfo == null)
                 return false;
 
-            //play store
-            if (IsGameFromPlayStore)
-            {
-                var version = CurrentPackageInfo.VersionName;
-                var splitApks = CurrentPackageInfo.ApplicationInfo?.SplitSourceDirs;
-                return splitApks?.Count == 2;
-            }
+            //split install: only require the two splits we read from (extra splits like language/dpi are fine)
+            if (UseSplitApks)
+                return FindSplit("split_config.arm64") != null && FindSplit("split_content") != null;
 
-            //samsung
+            //merged single APK / samsung
             return true;
         }
     }
@@ -72,10 +75,10 @@ internal static class StardewApkTool
                 if (CurrentPackageInfo == null)
                     return null;
 
-                if (IsGameFromPlayStore)
-                    return CurrentPackageInfo.ApplicationInfo.SplitSourceDirs?.FirstOrDefault(path => path.Contains("split_config.arm64"));
+                if (UseSplitApks)
+                    return FindSplit("split_config.arm64");
 
-                // Samsung: assemblies are in the base APK
+                // Samsung / merged APK: assemblies are in the base APK
                 return BaseApkPath;
             }
             catch (Exception ex)
@@ -95,11 +98,11 @@ internal static class StardewApkTool
                 if (CurrentPackageInfo == null)
                     return null;
 
-                //play store
-                if (IsGameFromPlayStore)
-                    return CurrentPackageInfo.ApplicationInfo.SplitSourceDirs?.First(path => path.Contains("split_content"));
+                //split install
+                if (UseSplitApks)
+                    return FindSplit("split_content");
 
-                //samsung
+                //samsung / merged APK
                 return BaseApkPath;
             }
             catch (Exception ex)

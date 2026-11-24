@@ -1,0 +1,81 @@
+name: Build launcher APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [any-install]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check secrets
+        env:
+          DEPS_REPO: ${{ secrets.DEPS_REPO }}
+          DEPS_TOKEN: ${{ secrets.DEPS_TOKEN }}
+        run: |
+          if [ -z "$DEPS_REPO" ] || [ -z "$DEPS_TOKEN" ]; then
+            echo "::error::Add repo secrets DEPS_REPO (owner/private-repo) and DEPS_TOKEN (PAT with read access to it). See the comment at the top of this job's checkout step."
+            exit 1
+          fi
+
+      # Layout must match the csproj HintPath: ../../SMAPI-Android-1.6/src/DependenciesDll relative to SMAPIGameLoader/
+      - uses: actions/checkout@v4
+        with:
+          path: SMAPILoader
+
+      # PRIVATE repo that holds src/DependenciesDll/{MonoGame.Framework,StardewValley,StardewValley.GameData}.dll
+      # extracted from your own game APK. Never put those files in a public repo.
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.DEPS_REPO }}
+          token: ${{ secrets.DEPS_TOKEN }}
+          path: SMAPI-Android-1.6
+
+      - name: Verify game DLLs are present
+        run: |
+          for f in MonoGame.Framework StardewValley StardewValley.GameData; do
+            test -f "SMAPI-Android-1.6/src/DependenciesDll/$f.dll" || { echo "::error::missing $f.dll in DEPS_REPO at src/DependenciesDll/"; exit 1; }
+          done
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: SMAPILoader/global.json
+
+      - name: Install Android workload
+        run: dotnet workload install android
+
+      - name: Restore (downloads runtime packs)
+        working-directory: SMAPILoader
+        run: dotnet restore SMAPIGameLoader/SMAPIGameLoader.csproj
+
+      - name: Install custom Mono runtime (reflection patches)
+        run: |
+          set -e
+          CUSTOM="$GITHUB_WORKSPACE/SMAPILoader/SharedLibs/native/arm64-v8a/libmonosgen-2.0.so"
+          test -f "$CUSTOM"
+          mapfile -t TARGETS < <(sudo find / -type f -name libmonosgen-2.0.so -path '*Microsoft.NETCore.App.Runtime.Mono.android-arm64*' 2>/dev/null)
+          [ ${#TARGETS[@]} -gt 0 ] || { echo "::error::android-arm64 Mono runtime pack not found"; exit 1; }
+          for t in "${TARGETS[@]}"; do
+            echo "Replacing $t"
+            sudo cp "$t" "$t.stock.bak"
+            sudo cp "$CUSTOM" "$t"
+          done
+
+      - name: Build
+        working-directory: SMAPILoader
+        run: |
+          dotnet build SMAPIGameLoader/SMAPIGameLoader.csproj -c Release \
+            -p:AndroidSdkDirectory="$ANDROID_HOME" \
+            -p:JavaSdkDirectory="$JAVA_HOME"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smapi-launcher-any-install
+          path: SMAPILoader/SMAPIGameLoader/bin/Release/net9.0-android/*-Signed.apk
+          if-no-files-found: error

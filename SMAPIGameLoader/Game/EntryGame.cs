@@ -1,4 +1,4 @@
-﻿using Android.App;
+using Android.App;
 using Android.Content;
 using SMAPIGameLoader.Launcher;
 using System;
@@ -21,10 +21,10 @@ internal static class EntryGame
 
         try
         {
+            // Version is only a warning now: don't block people running other game builds.
             if (StardewApkTool.IsGameVersionSupport == false)
             {
-                ToastNotifyTool.Notify("Not support game version: " + StardewApkTool.CurrentGameVersion + ", please update game");
-                return;
+                ToastNotifyTool.Notify("Untested game version: " + StardewApkTool.CurrentGameVersion + " (tested on " + StardewApkTool.GameVersionSupport + "+), trying anyway");
             }
 
             if (SMAPIInstaller.IsInstalled is false)
