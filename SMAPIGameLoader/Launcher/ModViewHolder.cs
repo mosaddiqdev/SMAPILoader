@@ -1,115 +1,121 @@
-﻿using Android.Content;
+using Android.Content;
+using Android.Content.Res;
 using Android.Graphics;
+using Android.Text;
 using Android.Views;
 using Android.Widget;
 using AndroidX.AppCompat.Widget;
-using AndroidX.CardView.Widget;
 using AndroidX.RecyclerView.Widget;
 using System;
-using Android.Util;
+using System.Linq;
 
 namespace SMAPIGameLoader.Launcher;
 
 internal class ModViewHolder : RecyclerView.ViewHolder
 {
-    private readonly TextView _name;
-    private readonly TextView _version;
-    private readonly SwitchCompat _toggle;
-    private readonly Action<ModInfo> _onToggled;
-    private readonly Action<ModInfo, View> _onClicked;
-    private ModInfo? _mod;
-    private bool _binding;
+    readonly TextView _name;
+    readonly TextView _meta;
+    readonly SwitchCompat _toggle;
+    readonly LinearLayout _text;
+    readonly View _divider;
+    readonly Action<ModInfo> _onToggled;
+    ModInfo _mod;
+    bool _binding;
 
-    private ModViewHolder(View root, TextView name, TextView version,
-                          SwitchCompat toggle, Action<ModInfo> onToggled,
-                          Action<ModInfo, View> onClicked) : base(root)
+    public static ModViewHolder Create(Context ctx, Action<ModInfo> onToggled, Action<ModInfo> onOpen)
+    {
+        var root = new LinearLayout(ctx) { Orientation = Orientation.Vertical };
+        root.LayoutParameters = new RecyclerView.LayoutParams(Ui.Match, Ui.Wrap);
+
+        var row = new LinearLayout(ctx) { Orientation = Orientation.Horizontal };
+        row.SetGravity(GravityFlags.CenterVertical);
+        row.SetPadding(Ui.Dp(ctx, 16), Ui.Dp(ctx, 12), Ui.Dp(ctx, 12), Ui.Dp(ctx, 12));
+
+        var text = new LinearLayout(ctx) { Orientation = Orientation.Vertical };
+        var name = Ui.Label(ctx, "", 16, Tokens.Text, medium: true);
+        var meta = Ui.Label(ctx, "", 13, Tokens.Muted);
+        foreach (var line in new[] { name, meta })
+        {
+            line.SetSingleLine(true);
+            line.Ellipsize = TextUtils.TruncateAt.End;
+        }
+        text.AddView(name);
+        text.AddView(meta, new LinearLayout.LayoutParams(Ui.Match, Ui.Wrap) { TopMargin = Ui.Dp(ctx, 3) });
+        row.AddView(text, new LinearLayout.LayoutParams(0, Ui.Wrap, 1f) { RightMargin = Ui.Dp(ctx, 12) });
+
+        var toggle = new SwitchCompat(ctx);
+        var states = new[] { new[] { Android.Resource.Attribute.StateChecked }, new int[0] };
+        toggle.TrackTintList = new ColorStateList(states, new[] { Tokens.Gold.ToArgb(), Color.ParseColor("#3A3934").ToArgb() });
+        toggle.ThumbTintList = new ColorStateList(states, new[] { Tokens.GoldInk.ToArgb(), Tokens.Muted.ToArgb() });
+        row.AddView(toggle);
+
+        var divider = Ui.Divider(ctx);
+        root.AddView(row, new LinearLayout.LayoutParams(Ui.Match, Ui.Wrap));
+        root.AddView(divider);
+
+        var holder = new ModViewHolder(root, name, meta, toggle, text, divider, onToggled);
+        Ui.MakeTappable(row, () =>
+        {
+            if (holder._mod != null)
+                onOpen(holder._mod);
+        });
+        return holder;
+    }
+
+    ModViewHolder(View root, TextView name, TextView meta, SwitchCompat toggle, LinearLayout text, View divider, Action<ModInfo> onToggled)
+        : base(root)
     {
         _name = name;
-        _version = version;
+        _meta = meta;
         _toggle = toggle;
+        _text = text;
+        _divider = divider;
         _onToggled = onToggled;
-        _onClicked = onClicked;
 
-        _toggle.CheckedChange += (s, e) =>
+        _toggle.CheckedChange += (_, e) =>
         {
             if (_binding || _mod == null) return;
-            if (_mod.Enabled == e.IsChecked) return;   // ไม่มีการเปลี่ยนจริง ข้าม
             _mod.Enabled = e.IsChecked;
             _onToggled(_mod);
 
-            //assert
+            // the rename can fail, so always show what is really on disk
+            _binding = true;
             _toggle.Checked = _mod.Enabled;
-        };
-
-        root.Click += (s, e) =>
-        {
-            if (_mod != null) _onClicked(_mod, root);
+            _binding = false;
+            Dim(_mod.Enabled);
         };
     }
 
-    public static ModViewHolder Create(Context context,
-                                       Action<ModInfo> onToggled,
-                                       Action<ModInfo, View> onClicked)
-    {
-        // Card ด้านนอก
-        var card = new CardView(context)
-        {
-            Radius = Ui.Dp(context, 12),
-            CardElevation = Ui.Dp(context, 4),
-            UseCompatPadding = true
-        };
-        card.SetCardBackgroundColor(Color.ParseColor("#1A1D24"));
-        card.LayoutParameters = new RecyclerView.LayoutParams(
-            ViewGroup.LayoutParams.MatchParent,
-            ViewGroup.LayoutParams.WrapContent)
-        {
-            BottomMargin = Ui.Dp(context, 12)
-        };
-
-        // แถวภายใน card: ซ้าย (ชื่อ+path) | ขวา (version+switch)
-        var row = new LinearLayout(context) { Orientation = Orientation.Horizontal };
-        row.SetGravity(GravityFlags.CenterVertical);
-        row.SetPadding(Ui.Dp(context, 16), Ui.Dp(context, 14),
-                       Ui.Dp(context, 16), Ui.Dp(context, 14));
-        card.AddView(row);
-
-        // Left
-        var left = new LinearLayout(context) { Orientation = Orientation.Vertical };
-        left.SetGravity(GravityFlags.Left);
-
-        var name = new TextView(context);
-        name.SetTextSize(ComplexUnitType.Sp, 16);
-        name.SetTextColor(Color.White);
-        name.SetTypeface(null, TypefaceStyle.Bold);
-
-        var version = new TextView(context);
-        version.SetTextSize(ComplexUnitType.Sp, 12);
-        version.SetTextColor(Color.ParseColor("#9AA0A6"));
-        version.LayoutParameters = new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MatchParent,
-            ViewGroup.LayoutParams.WrapContent)
-        { TopMargin = Ui.Dp(context, 2) };
-
-        left.AddView(name);
-        left.AddView(version);
-
-        // Right
-        var toggle = new SwitchCompat(context);
-
-        row.AddView(left, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
-        row.AddView(toggle);
-
-        return new ModViewHolder(card, name, version, toggle, onToggled, onClicked);
-    }
-
-    public void Bind(ModInfo mod)
+    public void Bind(ModInfo mod, bool isLast)
     {
         _mod = mod;
-        _name.Text = mod.NameUIText;
-        _version.Text = mod.VersionUIText;
-
         _binding = true;
         _toggle.Checked = mod.Enabled;
         _binding = false;
+
+        _name.Text = mod.Name;
+        _divider.Visibility = isLast ? ViewStates.Gone : ViewStates.Visible;
+        Dim(mod.Enabled);
+
+        if (mod.LoadError != null)
+        {
+            _meta.Text = mod.LoadError;
+            _meta.SetTextColor(Tokens.Red);
+        }
+        else if (mod.MissingDependencies.Count > 0)
+        {
+            var first = string.Join(", ", mod.MissingDependencies.Take(2));
+            var extra = mod.MissingDependencies.Count > 2 ? $" +{mod.MissingDependencies.Count - 2}" : "";
+            _meta.Text = "Needs " + first + extra;
+            _meta.SetTextColor(Tokens.Gold);
+        }
+        else
+        {
+            var parts = new[] { mod.Author, mod.Version.Length > 0 ? "v" + mod.Version : "" };
+            _meta.Text = string.Join(" · ", parts.Where(p => p.Length > 0));
+            _meta.SetTextColor(Tokens.Muted);
+        }
     }
+
+    void Dim(bool enabled) => _text.Alpha = enabled ? 1f : 0.5f;
 }
