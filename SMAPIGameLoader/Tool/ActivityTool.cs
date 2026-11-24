@@ -1,5 +1,6 @@
-﻿using Android.App;
+using Android.App;
 using Android.Content;
+using SMAPIGameLoader.Launcher;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -28,6 +29,9 @@ internal static class ActivityTool
 
     public static void Init(Activity activity)
     {
+        // every activity passes through here, so this is where the in-game log button gets hooked up
+        LogOverlay.EnsureRegistered(activity.Application);
+
         if (_ActivityList.Contains(activity))
             return;
 
