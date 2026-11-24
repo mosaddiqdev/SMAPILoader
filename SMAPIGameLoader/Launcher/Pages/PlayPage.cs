@@ -4,12 +4,13 @@ using Android.Views;
 using Android.Widget;
 using AndroidX.AppCompat.App;
 using System;
+using System.IO;
 using System.Linq;
 using Xamarin.Essentials;
 
 namespace SMAPIGameLoader.Launcher.Pages;
 
-// One line in the setup list: status dot, title, optional note, value on the right.
+// One line in a settings list: status dot, title, optional note, value on the right.
 internal sealed class SettingRow : LinearLayout
 {
     public TextView Value { get; }
@@ -44,9 +45,13 @@ internal sealed class SettingRow : LinearLayout
 
     public void SetStatus(Color color) => Ui.SetDotColor(_dot, color);
 
-    public void OnTap(Action onTap)
+    // Rows that open something get a chevron. Rows that flip a setting in place don't.
+    public void OnTap(Action onTap, bool chevron = true)
     {
         Ui.MakeTappable(this, onTap);
+        if (!chevron)
+            return;
+
         AddView(Ui.IconView(Context, "ic_chevron", Tokens.Faint, 18),
             new LayoutParams(Ui.Dp(Context, 18), Ui.Dp(Context, 18)) { LeftMargin = Ui.Dp(Context, 8) });
     }
@@ -63,6 +68,14 @@ internal sealed class PlayPage : LinearLayout
     readonly SettingRow _game;
     readonly SettingRow _smapi;
     readonly SettingRow _mods;
+    readonly SettingRow _log;
+    readonly SettingRow _button;
+
+    // the last log only gets re-read when the file actually changed
+    DateTime _logWrite;
+    long _logLength = -1;
+    int _logWarnings;
+    int _logErrors;
 
     public PlayPage(Context ctx, SheetHost sheet, Action openMods) : base(ctx)
     {
@@ -87,10 +100,7 @@ internal sealed class PlayPage : LinearLayout
         _summary.SetLineSpacing(0, 1.15f);
         content.AddView(_summary, new LayoutParams(Ui.Match, Ui.Wrap) { TopMargin = Ui.Dp(ctx, 8) });
 
-        var setup = Ui.Label(ctx, "SETUP", 12, Tokens.Muted, mono: true);
-        setup.LetterSpacing = 0.12f;
-        content.AddView(setup, new LayoutParams(Ui.Match, Ui.Wrap) { TopMargin = Ui.Dp(ctx, 32), BottomMargin = Ui.Dp(ctx, 10) });
-
+        content.AddView(SectionLabel("SETUP", 32));
         _game = new SettingRow(ctx, "Stardew Valley");
         _smapi = new SettingRow(ctx, "SMAPI");
         _mods = new SettingRow(ctx, "Mods");
@@ -102,14 +112,18 @@ internal sealed class PlayPage : LinearLayout
                 InstallSmapi();
         });
         _mods.OnTap(openMods);
+        content.AddView(Group(_game, _smapi, _mods), new LayoutParams(Ui.Match, Ui.Wrap));
 
-        var panel = Ui.Panel(ctx);
-        panel.AddView(_game);
-        panel.AddView(Ui.Divider(ctx));
-        panel.AddView(_smapi);
-        panel.AddView(Ui.Divider(ctx));
-        panel.AddView(_mods);
-        content.AddView(panel, new LayoutParams(Ui.Match, Ui.Wrap));
+        content.AddView(SectionLabel("LOGS", 28));
+        _log = new SettingRow(ctx, "Last log");
+        _button = new SettingRow(ctx, "In-game log button");
+        _log.OnTap(ShowLogSheet);
+        _button.OnTap(() =>
+        {
+            Preferences.Set(LogOverlay.PrefKey, !LogOverlay.ButtonEnabled);
+            Refresh();
+        }, chevron: false);
+        content.AddView(Group(_log, _button), new LayoutParams(Ui.Match, Ui.Wrap));
 
         _footer = Ui.Label(ctx, "", 11, Tokens.Faint, mono: true);
         _footer.SetLineSpacing(0, 1.3f);
@@ -123,6 +137,30 @@ internal sealed class PlayPage : LinearLayout
         AddView(bar, new LayoutParams(Ui.Match, Ui.Wrap));
 
         Refresh();
+    }
+
+    TextView SectionLabel(string text, int topDp)
+    {
+        var label = Ui.Label(_ctx, text, 12, Tokens.Muted, mono: true);
+        label.LetterSpacing = 0.12f;
+        label.LayoutParameters = new LayoutParams(Ui.Match, Ui.Wrap)
+        {
+            TopMargin = Ui.Dp(_ctx, topDp),
+            BottomMargin = Ui.Dp(_ctx, 10)
+        };
+        return label;
+    }
+
+    LinearLayout Group(params SettingRow[] rows)
+    {
+        var panel = Ui.Panel(_ctx);
+        for (int i = 0; i < rows.Length; i++)
+        {
+            if (i > 0)
+                panel.AddView(Ui.Divider(_ctx));
+            panel.AddView(rows[i]);
+        }
+        return panel;
     }
 
     public void Refresh()
@@ -165,6 +203,8 @@ internal sealed class PlayPage : LinearLayout
             _mods.SetNote(mods.Count == 0 ? "Nothing installed yet" : $"{mods.Count} installed");
             _mods.SetStatus(on > 0 ? Tokens.Green : Tokens.Faint);
 
+            RefreshLogRows();
+
             _launch.Text = smapi ? "Launch game" : "Install SMAPI first";
             Ui.SetAvailable(_launch, smapi);
 
@@ -174,6 +214,56 @@ internal sealed class PlayPage : LinearLayout
         {
             Console.WriteLine(ex);
         }
+    }
+
+    void RefreshLogRows()
+    {
+        var file = new FileInfo(LogSession.LogPath);
+        if (!file.Exists)
+        {
+            _log.Value.Text = "None";
+            _log.Value.SetTextColor(Tokens.Muted);
+            _log.SetNote("Launch the game once to create one");
+            _log.SetStatus(Tokens.Faint);
+        }
+        else
+        {
+            if (file.LastWriteTimeUtc != _logWrite || file.Length != _logLength)
+            {
+                var session = new LogSession();
+                session.LoadAll();
+                _logWarnings = session.Warnings;
+                _logErrors = session.Errors;
+                _logWrite = file.LastWriteTimeUtc;
+                _logLength = file.Length;
+            }
+
+            if (_logErrors > 0)
+            {
+                _log.Value.Text = _logErrors == 1 ? "1 error" : $"{_logErrors} errors";
+                _log.Value.SetTextColor(Tokens.Red);
+                _log.SetStatus(Tokens.Red);
+            }
+            else if (_logWarnings > 0)
+            {
+                _log.Value.Text = _logWarnings == 1 ? "1 warning" : $"{_logWarnings} warnings";
+                _log.Value.SetTextColor(Tokens.Gold);
+                _log.SetStatus(Tokens.Gold);
+            }
+            else
+            {
+                _log.Value.Text = "Clean";
+                _log.Value.SetTextColor(Tokens.Green);
+                _log.SetStatus(Tokens.Green);
+            }
+            _log.SetNote("Last run, " + file.LastWriteTime.ToString("d MMM, HH:mm"));
+        }
+
+        bool buttonOn = LogOverlay.ButtonEnabled;
+        _button.Value.Text = buttonOn ? "On" : "Off";
+        _button.Value.SetTextColor(buttonOn ? Tokens.Text : Tokens.Muted);
+        _button.SetNote("A small button you can drag while playing. Tap it to read the log.");
+        _button.SetStatus(buttonOn ? Tokens.Green : Tokens.Faint);
     }
 
     static string SmapiVersion()
@@ -194,6 +284,20 @@ internal sealed class PlayPage : LinearLayout
     }
 
     LayoutParams Gap(int dp) => new LayoutParams(Ui.Match, Ui.Wrap) { TopMargin = Ui.Dp(_ctx, dp) };
+
+    void ShowLogSheet()
+    {
+        var session = new LogSession();
+        session.LoadAll();
+
+        var view = new LogView(_ctx, session, inOverlay: false)
+        {
+            EmptyText = "No log yet. Launch the game once and it shows up here."
+        };
+        view.LayoutParameters = new FrameLayout.LayoutParams(Ui.Match, (int)(_ctx.Resources.DisplayMetrics.HeightPixels * 0.78f));
+        _sheet.Show(view);
+        view.Refresh();
+    }
 
     void ShowSmapiSheet()
     {
