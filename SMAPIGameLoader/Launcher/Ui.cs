@@ -5,6 +5,7 @@ using Android.Graphics.Drawables;
 using Android.Util;
 using Android.Views;
 using Android.Widget;
+using System;
 
 namespace SMAPIGameLoader.Launcher;
 
