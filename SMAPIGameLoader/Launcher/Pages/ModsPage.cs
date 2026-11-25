@@ -14,7 +14,7 @@ namespace SMAPIGameLoader.Launcher.Pages;
 
 internal sealed class ModsPage : LinearLayout
 {
-    enum Filter { All, On, Off }
+    enum Filter { All, On, Off, WontLoad }
 
     readonly Context _ctx;
     readonly SheetHost _sheet;
@@ -22,7 +22,7 @@ internal sealed class ModsPage : LinearLayout
     readonly TextView _summary;
     readonly EditText _search;
     readonly ImageView _clear;
-    readonly TextView[] _chips = new TextView[3];
+    readonly TextView[] _chips = new TextView[4];
     readonly LinearLayout _listPanel;
     readonly RecyclerView _list;
     readonly LinearLayout _empty;
@@ -32,6 +32,9 @@ internal sealed class ModsPage : LinearLayout
     List<ModInfo> _all = new();
     Filter _filter = Filter.All;
     Action _emptyTap;
+
+    // turned on but can't load: the only mods that actually need your attention
+    static bool WontLoad(ModInfo mod) => mod.Enabled && mod.Compat?.Level == CompatLevel.Incompatible;
 
     public ModsPage(Context ctx, SheetHost sheet) : base(ctx)
     {
@@ -184,11 +187,17 @@ internal sealed class ModsPage : LinearLayout
     {
         var query = (_search.Text ?? "").Trim();
 
+        // the "Won't load" chip disappears once nothing is wrong, so don't stay stuck on it
+        if (_filter == Filter.WontLoad && !_all.Any(WontLoad))
+            _filter = Filter.All;
+
         IEnumerable<ModInfo> items = _all;
         if (_filter == Filter.On)
             items = items.Where(m => m.Enabled);
         else if (_filter == Filter.Off)
             items = items.Where(m => !m.Enabled);
+        else if (_filter == Filter.WontLoad)
+            items = items.Where(WontLoad);
 
         if (query.Length > 0)
         {
@@ -215,8 +224,8 @@ internal sealed class ModsPage : LinearLayout
         if (_all.Count == 0)
         {
             _emptyTitle.Text = "No mods yet";
-            _emptyBody.Text = "Add a mod as a .zip file and the launcher unpacks it into your Mods folder.";
-            _emptyAction.Text = "Add a mod";
+            _emptyBody.Text = "Add mod zips and the launcher unpacks them into your Mods folder. You can pick several at once.";
+            _emptyAction.Text = "Add mods";
             _emptyTap = AddMod;
         }
         else
@@ -236,7 +245,8 @@ internal sealed class ModsPage : LinearLayout
     void UpdateChips()
     {
         int on = _all.Count(m => m.Enabled);
-        string[] names = { $"All {_all.Count}", $"On {on}", $"Off {_all.Count - on}" };
+        int broken = _all.Count(WontLoad);
+        string[] names = { $"All {_all.Count}", $"On {on}", $"Off {_all.Count - on}", $"Won’t load {broken}" };
         for (int i = 0; i < _chips.Length; i++)
         {
             bool selected = (int)_filter == i;
@@ -244,7 +254,11 @@ internal sealed class ModsPage : LinearLayout
             _chips[i].SetTextColor(selected ? Tokens.Text : Tokens.Muted);
             _chips[i].Background = selected ? Ui.Box(_ctx, Tokens.Surface2, 8, Tokens.Border) : null;
         }
-        _summary.Text = _all.Count == 0 ? "Nothing installed yet" : $"{on} of {_all.Count} turned on";
+        _chips[(int)Filter.WontLoad].Visibility = broken > 0 ? ViewStates.Visible : ViewStates.Gone;
+
+        _summary.Text = _all.Count == 0
+            ? "Nothing installed yet"
+            : broken > 0 ? $"{on} of {_all.Count} turned on, {broken} won’t load" : $"{on} of {_all.Count} turned on";
     }
 
     // The list keeps its order after a toggle so the row doesn't jump away under your finger.
@@ -281,14 +295,20 @@ internal sealed class ModsPage : LinearLayout
             body.AddView(description, Gap(14));
         }
 
-        if (mod.LoadError != null)
+        if (mod.Compat != null)
         {
-            body.AddView(Ui.Label(_ctx, mod.LoadError, 13, Tokens.Red), Gap(14));
-        }
-        else if (mod.MissingDependencies.Count > 0)
-        {
-            var needs = "Needs " + string.Join(", ", mod.MissingDependencies) + ". Install or turn them on.";
-            body.AddView(Ui.Label(_ctx, needs, 13, Tokens.Gold), Gap(14));
+            bool ok = mod.Compat.Level == CompatLevel.Compatible;
+            var compat = Ui.Panel(_ctx);
+            compat.SetPadding(Ui.Dp(_ctx, 14), Ui.Dp(_ctx, 12), Ui.Dp(_ctx, 14), Ui.Dp(_ctx, 12));
+            compat.AddView(CompatUi.Badge(_ctx, mod.Compat), new LayoutParams(Ui.Wrap, Ui.Wrap));
+
+            foreach (var line in ok ? mod.Compat.Passed : mod.Compat.Problems)
+            {
+                var text = Ui.Label(_ctx, line, 13, ok ? Tokens.Muted : Tokens.Text);
+                text.SetLineSpacing(0, 1.15f);
+                compat.AddView(text, Gap(8));
+            }
+            body.AddView(compat, Gap(16));
         }
 
         var details = Ui.Panel(_ctx);
@@ -296,7 +316,7 @@ internal sealed class ModsPage : LinearLayout
         if (mod.UniqueId.Length > 0)
             details.AddView(Ui.Field(_ctx, "Unique ID", mod.UniqueId));
         details.AddView(Ui.Field(_ctx, "Folder", RelativeFolder(mod)), mod.UniqueId.Length > 0 ? Gap(12) : Gap(0));
-        body.AddView(details, Gap(18));
+        body.AddView(details, Gap(12));
 
         var open = Ui.Button(_ctx, "Open folder");
         open.Click += (_, _) => FileTool.OpenAppFiles(mod.ModFolderPath);

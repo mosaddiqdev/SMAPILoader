@@ -132,13 +132,22 @@ internal sealed class PlayPage : LinearLayout
             bool smapi = SMAPIInstaller.IsInstalled;
             var mods = ModLibrary.Scan();
             int on = mods.Count(m => m.Enabled);
+            int broken = mods.Count(m => m.Enabled && m.Compat?.Level == CompatLevel.Incompatible);
             var version = StardewApkTool.CurrentGameVersion;
             bool tested = StardewApkTool.IsGameVersionSupport;
 
             _headline.Text = smapi ? "Ready to play" : "SMAPI isn’t installed";
-            _summary.Text = smapi
-                ? $"Stardew Valley {version}, SMAPI {SmapiVersion()}, {on} {(on == 1 ? "mod" : "mods")} on."
-                : "Install SMAPI to launch the game with mods.";
+            if (smapi)
+            {
+                var summary = $"Stardew Valley {version}, SMAPI {SmapiVersion()}, {on} {(on == 1 ? "mod" : "mods")} on.";
+                if (broken > 0)
+                    summary += $" {broken} won’t load.";
+                _summary.Text = summary;
+            }
+            else
+            {
+                _summary.Text = "Install SMAPI to launch the game with mods.";
+            }
 
             bool split = StardewApkTool.CurrentPackageInfo?.ApplicationInfo?.SplitSourceDirs?.Count > 0;
             _game.Value.Text = version.ToString();
@@ -162,8 +171,10 @@ internal sealed class PlayPage : LinearLayout
 
             _mods.Value.Text = mods.Count == 0 ? "Add" : $"{on} on";
             _mods.Value.SetTextColor(mods.Count == 0 ? Tokens.Gold : Tokens.Text);
-            _mods.SetNote(mods.Count == 0 ? "Nothing installed yet" : $"{mods.Count} installed");
-            _mods.SetStatus(on > 0 ? Tokens.Green : Tokens.Faint);
+            _mods.SetNote(mods.Count == 0
+                ? "Nothing installed yet"
+                : broken > 0 ? $"{mods.Count} installed, {broken} won’t load" : $"{mods.Count} installed");
+            _mods.SetStatus(broken > 0 ? Tokens.Red : on > 0 ? Tokens.Green : Tokens.Faint);
 
             _launch.Text = smapi ? "Launch game" : "Install SMAPI first";
             Ui.SetAvailable(_launch, smapi);
