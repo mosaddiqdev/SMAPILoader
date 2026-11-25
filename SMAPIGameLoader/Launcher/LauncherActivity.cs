@@ -12,13 +12,14 @@ using Xamarin.Essentials;
 
 namespace SMAPIGameLoader.Launcher;
 
+// Orientation follows the phone. The game itself is landscape-only (see SMAPIActivity).
 [Activity(
     Label = "SMAPI Launcher",
     MainLauncher = true,
     Theme = "@style/Theme.Charcoal",
     AlwaysRetainTaskState = true,
     LaunchMode = LaunchMode.SingleInstance,
-    ScreenOrientation = ScreenOrientation.FullSensor
+    ScreenOrientation = ScreenOrientation.Unspecified
 )]
 public class LauncherActivity : AppCompatActivity
 {
@@ -46,8 +47,9 @@ public class LauncherActivity : AppCompatActivity
         SetupLauncherPage();
         SetDarkMode();
 
-        //run utils scripts
-        ProcessAdbExtras();
+        // The activity is rebuilt when the phone rotates. Only a fresh start may auto-launch the game.
+        if (savedInstanceState == null)
+            ProcessAdbExtras();
     }
 
     private void SetDarkMode()

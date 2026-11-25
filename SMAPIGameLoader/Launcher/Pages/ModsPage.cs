@@ -40,10 +40,10 @@ internal sealed class ModsPage : LinearLayout
         Orientation = Orientation.Vertical;
         int edge = Ui.Dp(ctx, 20);
 
-        var header = new LinearLayout(ctx) { Orientation = Orientation.Horizontal };
-        header.SetGravity(GravityFlags.CenterVertical);
-        header.SetPadding(edge, Ui.Dp(ctx, 24), edge, 0);
-        header.AddView(Ui.Label(ctx, "Mods", 30, Tokens.Text, medium: true), new LayoutParams(0, Ui.Wrap, 1f));
+        // Landscape is short. Title, search, filters and Add share one row so the list keeps the height.
+        bool landscape = ctx.Resources.Configuration.Orientation == Android.Content.Res.Orientation.Landscape;
+
+        var title = Ui.Label(ctx, "Mods", landscape ? 22 : 30, Tokens.Text, medium: true);
 
         var add = Ui.Button(ctx, "Add");
         var plus = Ui.Icon(ctx, "ic_add", Tokens.Text);
@@ -51,13 +51,11 @@ internal sealed class ModsPage : LinearLayout
         add.SetCompoundDrawables(plus, null, null, null);
         add.CompoundDrawablePadding = Ui.Dp(ctx, 8);
         add.Click += (_, _) => AddMod();
-        header.AddView(add);
-        AddView(header, new LayoutParams(Ui.Match, Ui.Wrap));
 
         _summary = Ui.Label(ctx, "", 14, Tokens.Muted);
         _summary.SetPadding(edge, 0, edge, 0);
-        AddView(_summary, new LayoutParams(Ui.Match, Ui.Wrap) { TopMargin = Ui.Dp(ctx, 6) });
 
+        int searchPad = Ui.Dp(ctx, landscape ? 8 : 12);
         var searchBox = new LinearLayout(ctx) { Orientation = Orientation.Horizontal };
         searchBox.SetGravity(GravityFlags.CenterVertical);
         searchBox.Background = Ui.Box(ctx, Tokens.Surface, 10, Tokens.Border);
@@ -70,11 +68,11 @@ internal sealed class ModsPage : LinearLayout
         _search.SetTextColor(Tokens.Text);
         _search.SetHintTextColor(Tokens.Faint);
         _search.Background = null;
-        _search.SetPadding(Ui.Dp(ctx, 10), Ui.Dp(ctx, 12), Ui.Dp(ctx, 10), Ui.Dp(ctx, 12));
+        _search.SetPadding(Ui.Dp(ctx, 10), searchPad, Ui.Dp(ctx, 10), searchPad);
         searchBox.AddView(_search, new LayoutParams(0, Ui.Wrap, 1f));
 
-        _clear = Ui.IconView(ctx, "ic_close", Tokens.Muted, 44);
-        _clear.SetPadding(Ui.Dp(ctx, 13), Ui.Dp(ctx, 13), Ui.Dp(ctx, 13), Ui.Dp(ctx, 13));
+        _clear = Ui.IconView(ctx, "ic_close", Tokens.Muted, 40);
+        _clear.SetPadding(Ui.Dp(ctx, 11), Ui.Dp(ctx, 11), Ui.Dp(ctx, 11), Ui.Dp(ctx, 11));
         _clear.Visibility = ViewStates.Gone;
         _clear.ContentDescription = "Clear search";
         _clear.Click += (_, _) => _search.Text = "";
@@ -85,15 +83,9 @@ internal sealed class ModsPage : LinearLayout
             _clear.Visibility = string.IsNullOrEmpty(_search.Text) ? ViewStates.Gone : ViewStates.Visible;
             ApplyFilter();
         };
-        AddView(searchBox, new LayoutParams(Ui.Match, Ui.Dp(ctx, 46))
-        {
-            LeftMargin = edge,
-            RightMargin = edge,
-            TopMargin = Ui.Dp(ctx, 16)
-        });
 
         var chipRow = new LinearLayout(ctx) { Orientation = Orientation.Horizontal };
-        chipRow.SetPadding(edge, 0, edge, 0);
+        chipRow.SetPadding(landscape ? 0 : edge, 0, landscape ? 0 : edge, 0);
         for (int i = 0; i < _chips.Length; i++)
         {
             var filter = (Filter)i;
@@ -109,10 +101,43 @@ internal sealed class ModsPage : LinearLayout
             chipRow.AddView(chip, new LayoutParams(Ui.Wrap, Ui.Dp(ctx, 32)) { RightMargin = Ui.Dp(ctx, 8) });
             _chips[i] = chip;
         }
-        AddView(chipRow, new LayoutParams(Ui.Match, Ui.Wrap) { TopMargin = Ui.Dp(ctx, 12) });
+
+        if (landscape)
+        {
+            var bar = new LinearLayout(ctx) { Orientation = Orientation.Horizontal };
+            bar.SetGravity(GravityFlags.CenterVertical);
+            bar.SetPadding(edge, Ui.Dp(ctx, 10), edge, 0);
+            bar.AddView(title, new LayoutParams(Ui.Wrap, Ui.Wrap));
+            bar.AddView(searchBox, new LayoutParams(0, Ui.Dp(ctx, 40), 1f)
+            {
+                LeftMargin = Ui.Dp(ctx, 16),
+                RightMargin = Ui.Dp(ctx, 12)
+            });
+            bar.AddView(chipRow, new LayoutParams(Ui.Wrap, Ui.Wrap));
+            bar.AddView(add, new LayoutParams(Ui.Wrap, Ui.Wrap) { LeftMargin = Ui.Dp(ctx, 4) });
+            AddView(bar, new LayoutParams(Ui.Match, Ui.Wrap));
+        }
+        else
+        {
+            var header = new LinearLayout(ctx) { Orientation = Orientation.Horizontal };
+            header.SetGravity(GravityFlags.CenterVertical);
+            header.SetPadding(edge, Ui.Dp(ctx, 24), edge, 0);
+            header.AddView(title, new LayoutParams(0, Ui.Wrap, 1f));
+            header.AddView(add);
+            AddView(header, new LayoutParams(Ui.Match, Ui.Wrap));
+
+            AddView(_summary, new LayoutParams(Ui.Match, Ui.Wrap) { TopMargin = Ui.Dp(ctx, 6) });
+            AddView(searchBox, new LayoutParams(Ui.Match, Ui.Dp(ctx, 46))
+            {
+                LeftMargin = edge,
+                RightMargin = edge,
+                TopMargin = Ui.Dp(ctx, 16)
+            });
+            AddView(chipRow, new LayoutParams(Ui.Match, Ui.Wrap) { TopMargin = Ui.Dp(ctx, 12) });
+        }
 
         var body = new FrameLayout(ctx);
-        body.SetPadding(edge, Ui.Dp(ctx, 12), edge, Ui.Dp(ctx, 12));
+        body.SetPadding(edge, Ui.Dp(ctx, landscape ? 8 : 12), edge, Ui.Dp(ctx, 12));
 
         _adapter = new ModAdapter(ctx, OnToggled, OpenDetail);
         _list = new RecyclerView(ctx);
@@ -125,12 +150,12 @@ internal sealed class ModsPage : LinearLayout
 
         _empty = new LinearLayout(ctx) { Orientation = Orientation.Vertical };
         _empty.SetGravity(GravityFlags.Center);
-        _empty.SetPadding(Ui.Dp(ctx, 24), 0, Ui.Dp(ctx, 24), Ui.Dp(ctx, 48));
-        _empty.AddView(Ui.IconView(ctx, "ic_sprout", null, 72));
+        _empty.SetPadding(Ui.Dp(ctx, 24), 0, Ui.Dp(ctx, 24), Ui.Dp(ctx, landscape ? 8 : 48));
+        _empty.AddView(Ui.IconView(ctx, "ic_sprout", null, landscape ? 48 : 72));
 
         _emptyTitle = Ui.Label(ctx, "", 18, Tokens.Text, medium: true);
         _emptyTitle.Gravity = GravityFlags.Center;
-        _empty.AddView(_emptyTitle, new LayoutParams(Ui.Match, Ui.Wrap) { TopMargin = Ui.Dp(ctx, 20) });
+        _empty.AddView(_emptyTitle, new LayoutParams(Ui.Match, Ui.Wrap) { TopMargin = Ui.Dp(ctx, landscape ? 12 : 20) });
 
         _emptyBody = Ui.Label(ctx, "", 14, Tokens.Muted);
         _emptyBody.Gravity = GravityFlags.Center;
@@ -140,7 +165,7 @@ internal sealed class ModsPage : LinearLayout
         _emptyAction = Ui.Button(ctx, "", Ui.Kind.Primary);
         _emptyAction.SetMinWidth(Ui.Dp(ctx, 160));
         _emptyAction.Click += (_, _) => _emptyTap?.Invoke();
-        _empty.AddView(_emptyAction, new LayoutParams(Ui.Wrap, Ui.Wrap) { TopMargin = Ui.Dp(ctx, 24) });
+        _empty.AddView(_emptyAction, new LayoutParams(Ui.Wrap, Ui.Wrap) { TopMargin = Ui.Dp(ctx, landscape ? 16 : 24) });
 
         _empty.Visibility = ViewStates.Gone;
         body.AddView(_empty, new FrameLayout.LayoutParams(Ui.Match, Ui.Match));

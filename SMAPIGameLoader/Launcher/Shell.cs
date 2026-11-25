@@ -8,7 +8,7 @@ using System;
 
 namespace SMAPIGameLoader.Launcher;
 
-// Root of the launcher. Pads the page for the status and navigation bars.
+// Root of the launcher. Pads the page for the status bar, navigation bar and side bars.
 internal sealed class Shell : FrameLayout
 {
     public LinearLayout Body { get; }
@@ -23,7 +23,13 @@ internal sealed class Shell : FrameLayout
     public override WindowInsets OnApplyWindowInsets(WindowInsets insets)
     {
         if (insets != null)
-            Body.SetPadding(0, insets.SystemWindowInsetTop, 0, insets.SystemWindowInsetBottom);
+        {
+            Body.SetPadding(
+                insets.SystemWindowInsetLeft,
+                insets.SystemWindowInsetTop,
+                insets.SystemWindowInsetRight,
+                insets.SystemWindowInsetBottom);
+        }
         return base.OnApplyWindowInsets(insets);
     }
 }
@@ -40,6 +46,10 @@ internal sealed class TabBar : LinearLayout
         SetBackgroundColor(Tokens.Surface);
         AddView(Ui.Divider(ctx));
 
+        // landscape is short, so the bar gives some height back
+        bool landscape = ctx.Resources.Configuration.Orientation == Android.Content.Res.Orientation.Landscape;
+        int labelHeight = Ui.Dp(ctx, landscape ? 42 : 50);
+
         var row = new LinearLayout(ctx) { Orientation = Orientation.Horizontal };
         AddView(row, new LayoutParams(Ui.Match, Ui.Wrap));
 
@@ -54,7 +64,7 @@ internal sealed class TabBar : LinearLayout
             label.Gravity = GravityFlags.Center;
 
             cell.AddView(line, new LayoutParams(Ui.Match, Ui.Dp(ctx, 2)));
-            cell.AddView(label, new LayoutParams(Ui.Match, Ui.Dp(ctx, 50)));
+            cell.AddView(label, new LayoutParams(Ui.Match, labelHeight));
             Ui.MakeTappable(cell, () => Select(index));
             row.AddView(cell, new LayoutParams(0, Ui.Wrap, 1f));
 
@@ -76,6 +86,7 @@ internal sealed class TabBar : LinearLayout
 }
 
 // Bottom sheet drawn inside the activity, so we control the look end to end.
+// Tall content scrolls, and on wide screens the sheet stays a comfortable width.
 internal sealed class SheetHost : FrameLayout
 {
     readonly View _scrim;
@@ -97,9 +108,14 @@ internal sealed class SheetHost : FrameLayout
         shape.SetStroke(Ui.Dp(ctx, 1), Tokens.Border);
         shape.SetCornerRadii(new float[] { r, r, r, r, 0, 0, 0, 0 });
 
+        int width = Math.Min(ctx.Resources.DisplayMetrics.WidthPixels, Ui.Dp(ctx, 560));
         _panel = new FrameLayout(ctx) { Clickable = true };
         _panel.Background = shape;
-        AddView(_panel, new LayoutParams(Ui.Match, Ui.Wrap) { Gravity = GravityFlags.Bottom });
+        AddView(_panel, new LayoutParams(width, Ui.Wrap)
+        {
+            Gravity = GravityFlags.Bottom | GravityFlags.CenterHorizontal,
+            TopMargin = Ui.Dp(ctx, 48)
+        });
     }
 
     public override WindowInsets OnApplyWindowInsets(WindowInsets insets)
@@ -111,8 +127,10 @@ internal sealed class SheetHost : FrameLayout
 
     public void Show(View content)
     {
+        var scroll = new ScrollView(Context) { VerticalScrollBarEnabled = false };
+        scroll.AddView(content);
         _panel.RemoveAllViews();
-        _panel.AddView(content);
+        _panel.AddView(scroll);
         IsOpen = true;
         Visibility = ViewStates.Visible;
 
