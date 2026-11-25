@@ -13,38 +13,11 @@
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
 
-    <style name="Theme.Charcoal" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/gold</item>
-        <item name="colorOnPrimary">@color/gold_ink</item>
-        <item name="colorAccent">@color/gold</item>
-        <item name="colorSurface">@color/surface</item>
-        <item name="colorOnSurface">@color/text</item>
-        <item name="android:colorAccent">@color/gold</item>
-        <item name="android:colorBackground">@color/bg</item>
+    <style name="Theme.Launcher" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:windowBackground">@color/bg</item>
-        <item name="android:textColorPrimary">@color/text</item>
-        <item name="android:textColorSecondary">@color/muted</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="alertDialogTheme">@style/Dialog.CharcoalX</item>
-        <item name="android:alertDialogTheme">@style/Dialog.Charcoal</item>
-    </style>
-
-    <style name="Dialog.Charcoal" parent="@android:style/Theme.Material.Dialog.Alert">
-        <item name="android:windowBackground">@drawable/dialog_surface</item>
-        <item name="android:colorBackground">@color/surface2</item>
-        <item name="android:colorAccent">@color/gold</item>
-        <item name="android:textColorPrimary">@color/text</item>
-        <item name="android:textColorSecondary">@color/muted</item>
-    </style>
-
-    <style name="Dialog.CharcoalX" parent="Theme.AppCompat.Dialog.Alert">
-        <item name="android:windowBackground">@drawable/dialog_surface</item>
-        <item name="android:colorBackground">@color/surface2</item>
-        <item name="colorAccent">@color/gold</item>
-        <item name="android:textColorPrimary">@color/text</item>
-        <item name="android:textColorSecondary">@color/muted</item>
     </style>
 
 </resources>

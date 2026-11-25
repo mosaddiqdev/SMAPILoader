@@ -1,13 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="bg">#141413</color>
-    <color name="surface">#1B1B19</color>
-    <color name="surface2">#222220</color>
-    <color name="border">#2E2D29</color>
-    <color name="text">#ECE7DA</color>
-    <color name="muted">#9C9687</color>
-    <color name="faint">#6F6B60</color>
-    <color name="gold">#E3A935</color>
-    <color name="gold_ink">#1D1507</color>
-    <color name="icon_bg">#141413</color>
+    <color name="bg">#0F0F10</color>
 </resources>
