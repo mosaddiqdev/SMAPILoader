@@ -1,4 +1,4 @@
-﻿using Android;
+using Android;
 using Android.Content.PM;
 using Android.OS;
 using AndroidX.Core.App;
@@ -14,17 +14,21 @@ namespace SMAPIGameLoader;
 
 internal static class FilePickerTool
 {
+    // some file managers report zips as x-zip-compressed
     public static FilePickerFileType FileTypeZip = new FilePickerFileType(new Dictionary<DevicePlatform, IEnumerable<string>>
     {
-        { DevicePlatform.Android, new[] { "application/zip" } },
+        { DevicePlatform.Android, new[] { "application/zip", "application/x-zip-compressed" } },
     });
-    public static async Task<FileResult> PickZipFile(string title = null)
-    {
-        if (title == null)
-            title = "Please select zip file";
 
-        //TODO check permission
-        //android 6 --> 10 need to request External read write storage
+    static PickOptions ZipOptions(string title) => new PickOptions
+    {
+        PickerTitle = title ?? "Please select zip file",
+        FileTypes = FileTypeZip,
+    };
+
+    // android 6 --> 10 need to request External read write storage
+    static bool HasStoragePermission()
+    {
         var activity = SMAPIGameLoader.Launcher.LauncherActivity.Instance;
         if (Build.VERSION.SdkInt >= BuildVersionCodes.M && Build.VERSION.SdkInt <= BuildVersionCodes.Q)
         {
@@ -32,19 +36,29 @@ internal static class FilePickerTool
                 || ContextCompat.CheckSelfPermission(activity, Manifest.Permission.WriteExternalStorage) != Permission.Granted)
             {
                 ToastNotifyTool.Notify("Please Click Allow File Access Permission");
-                // Request the permissions
                 ActivityCompat.RequestPermissions(activity,
                     [Manifest.Permission.ReadExternalStorage, Manifest.Permission.WriteExternalStorage],
-                    1000); // 100 is a request code (you can choose any integer)
-                return null;
+                    1000);
+                return false;
             }
         }
+        return true;
+    }
 
-        var options = new PickOptions
-        {
-            PickerTitle = title,
-            FileTypes = FileTypeZip,
-        };
-        return await FilePicker.PickAsync(options);
+    public static async Task<FileResult> PickZipFile(string title = null)
+    {
+        if (!HasStoragePermission())
+            return null;
+
+        return await FilePicker.PickAsync(ZipOptions(title));
+    }
+
+    // Same picker, but you can tick as many zips as you like.
+    public static async Task<IEnumerable<FileResult>> PickZipFiles(string title = null)
+    {
+        if (!HasStoragePermission())
+            return null;
+
+        return await FilePicker.PickMultipleAsync(ZipOptions(title ?? "Select mod zips"));
     }
 }

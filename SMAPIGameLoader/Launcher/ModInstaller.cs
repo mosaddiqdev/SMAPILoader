@@ -1,10 +1,13 @@
-﻿using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Linq;
 using SMAPIGameLoader.Tool;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
+using Xamarin.Essentials;
 
 namespace SMAPIGameLoader.Launcher;
 
@@ -61,87 +64,111 @@ internal static class ModInstaller
         return true;
     }
 
-    //Install Mod Zip Single, Pack Mods
-    public static void InstallModPackZip(string zipFilePath, ZipArchive zip)
-    {
-        //extract mod
-        ExtractModZipFile(zipFilePath, zip, ModTool.ModsDir);
+    sealed record InstallResult(string File, List<string> Mods, string Error);
 
-        //print log
-        var entries = zip.Entries;
-        var manifestEntires = entries.Where(entry => entry.Name == ModTool.ManifiestFileName).ToArray();
-        var logBuilder = new StringBuilder();
-        var fileInfo = new FileInfo(zipFilePath);
-        logBuilder.AppendLine("Mod zip: " + fileInfo.Name);
-        logBuilder.AppendLine("");
-        logBuilder.AppendLine("List mods: " + manifestEntires.Length);
-        for (int i = 0; i < manifestEntires.Length; i++)
-        {
-            var manifestEntry = manifestEntires[i];
-            var modDir = manifestEntry.FullName.Replace($"/{ModTool.ManifiestFileName}", "");
-            var dirInfo = new DirectoryInfo(modDir);
-            logBuilder.AppendLine($"[{i + 1}]: {dirInfo.Name}");
-        }
-
-        DialogTool.Show("Installed Mod Pack", logBuilder.ToString());
-    }
+    // Pick any number of zips, install them one after another, then show a single summary.
     public static async void OnClickInstallMod(Action OnInstalledCallback = null)
     {
         try
         {
-            var pickFile = await FilePickerTool.PickZipFile();
-            if (pickFile == null)
+            var picks = (await FilePickerTool.PickZipFiles())?.ToList();
+            if (picks == null || picks.Count == 0)
                 return;
 
-            using var zip = ZipFile.OpenRead(pickFile.FullPath);
-            var entries = zip.Entries;
-            var manifestEntires = entries.Where(entry => entry.Name == ModTool.ManifiestFileName).ToArray();
-            if (manifestEntires.Length == 0)
+            TaskTool.Run(LauncherActivity.Instance, () =>
             {
-                ToastNotifyTool.Notify("Not found manifest.json");
-                return;
-            }
+                TaskTool.SetTitle(picks.Count == 1 ? "Installing mod" : $"Installing {picks.Count} mods");
 
-            bool isModPack = manifestEntires.Length != 1;
-            if (isModPack)
-            {
-                InstallModPackZip(pickFile.FullPath, zip);
-                OnInstalledCallback.Invoke();
-                return;
-            }
+                var results = new List<InstallResult>();
+                for (int i = 0; i < picks.Count; i++)
+                {
+                    TaskTool.NewLine($"{i + 1}/{picks.Count}  {picks[i].FileName}");
+                    results.Add(InstallOne(picks[i]));
+                }
 
-            //try unpack into mods dir
-            var manifestText = ReadManifest(manifestEntires[0]);
-            var manifestJson = JObject.Parse(manifestText);
-            string modName = manifestJson["Name"].ToString();
-
-            ExtractModZipFile(pickFile.FileName, zip, Path.Combine(ModsDirPath));
-            zip.Dispose();
-
-            var modVersion = manifestJson["Version"].ToString();
-            var author = manifestJson["Author"].ToString();
-            var modLogBuilder = new StringBuilder();
-            modLogBuilder.AppendLine($"Name: {modName}");
-            modLogBuilder.AppendLine($"Version: {modVersion}");
-            modLogBuilder.AppendLine($"Author: {author}");
-
-            var minGameVersion = GetMinGameVersion(manifestJson);
-            if (minGameVersion != null)
-                modLogBuilder.AppendLine($"Minimum Game Version: " + minGameVersion);
-
-            var minSMAPIVersion = GetMinSMAPIVersion(manifestJson);
-            if (minSMAPIVersion != null)
-                modLogBuilder.AppendLine($"Minimum SMAPI Version: " + minSMAPIVersion);
-
-
-            DialogTool.Show("Installed Mod", modLogBuilder.ToString());
-            OnInstalledCallback?.Invoke();
+                TaskTool.CloseBusyDialog();
+                ShowSummary(results);
+                MainThread.BeginInvokeOnMainThread(() => OnInstalledCallback?.Invoke());
+                return Task.CompletedTask;
+            });
         }
         catch (Exception ex)
         {
             ErrorDialogTool.Show(ex);
         }
     }
+
+    // One zip can hold one mod or a whole pack. A bad zip is skipped, it never stops the rest.
+    static InstallResult InstallOne(FileResult pick)
+    {
+        try
+        {
+            using var zip = ZipFile.OpenRead(pick.FullPath);
+            var manifests = zip.Entries.Where(entry => entry.Name == ModTool.ManifiestFileName).ToArray();
+            if (manifests.Length == 0)
+                return new InstallResult(pick.FileName, new List<string>(), "no manifest.json inside, so it isn’t a mod");
+
+            var names = new List<string>();
+            foreach (var entry in manifests)
+            {
+                try
+                {
+                    var json = JObject.Parse(ReadManifest(entry));
+                    var name = json["Name"]?.ToString();
+                    var version = json["Version"]?.ToString();
+                    if (string.IsNullOrWhiteSpace(name))
+                        names.Add(entry.FullName);
+                    else
+                        names.Add(string.IsNullOrWhiteSpace(version) ? name : $"{name} {version}");
+                }
+                catch
+                {
+                    names.Add(entry.FullName);
+                }
+            }
+
+            ExtractModZipFile(pick.FileName, zip, ModsDirPath);
+            return new InstallResult(pick.FileName, names, null);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+            return new InstallResult(pick.FileName, new List<string>(), ex.Message);
+        }
+    }
+
+    static void ShowSummary(List<InstallResult> results)
+    {
+        var added = results.Where(r => r.Error == null).SelectMany(r => r.Mods).ToList();
+        var skipped = results.Where(r => r.Error != null).ToList();
+
+        var text = new StringBuilder();
+        if (added.Count > 0)
+        {
+            text.AppendLine("Added");
+            foreach (var name in added)
+                text.AppendLine("  " + name);
+        }
+        if (skipped.Count > 0)
+        {
+            if (text.Length > 0)
+                text.AppendLine();
+            text.AppendLine("Skipped");
+            foreach (var result in skipped)
+                text.AppendLine($"  {result.File}: {result.Error}");
+        }
+
+        string title;
+        if (skipped.Count == 0)
+            title = added.Count == 1 ? "Installed 1 mod" : $"Installed {added.Count} mods";
+        else if (added.Count == 0)
+            title = "Nothing installed";
+        else
+            title = $"Installed {added.Count}, skipped {skipped.Count}";
+
+        DialogTool.Show(title, text.ToString().TrimEnd());
+    }
+
     public static void ExtractModZipFile(string zipFilePath, ZipArchive zip, string outputDir)
     {
         //fix bug
