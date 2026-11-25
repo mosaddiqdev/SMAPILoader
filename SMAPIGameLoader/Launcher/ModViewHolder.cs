@@ -9,6 +9,9 @@ using AndroidX.RecyclerView.Widget;
 using System;
 using System.Linq;
 
+// Android.Content.Res and Android.Widget both define Orientation
+using Orientation = Android.Widget.Orientation;
+
 namespace SMAPIGameLoader.Launcher;
 
 internal class ModViewHolder : RecyclerView.ViewHolder

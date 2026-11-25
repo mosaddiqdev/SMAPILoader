@@ -7,6 +7,9 @@ using Android.Views;
 using Android.Widget;
 using System;
 
+// Android.Content.Res and Android.Widget both define Orientation
+using Orientation = Android.Widget.Orientation;
+
 namespace SMAPIGameLoader.Launcher;
 
 // One warm-charcoal palette. Gold is the only accent; green and red are reserved for status.
@@ -42,7 +45,7 @@ public static class Ui
         var view = new TextView(ctx) { Text = text };
         view.SetTextSize(ComplexUnitType.Sp, sp);
         view.SetTextColor(color);
-        view.IncludeFontPadding = false;
+        view.SetIncludeFontPadding(false);
         view.Typeface = mono
             ? Typeface.Monospace
             : Typeface.Create(medium ? "sans-serif-medium" : "sans-serif", TypefaceStyle.Normal);
