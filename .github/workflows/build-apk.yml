@@ -38,6 +38,19 @@ jobs:
             test -f "SMAPI-Android-1.6/src/DependenciesDll/$f.dll" || { echo "::error::missing $f.dll in DEPS_REPO at src/DependenciesDll/"; exit 1; }
           done
 
+      # Pixelify Sans, SIL Open Font License 1.1. Pinned to one google/fonts commit and checked by hash.
+      # It is only used for large titles. Its licence text is bundled next to it.
+      - name: Fetch fonts
+        run: |
+          set -e
+          DIR="SMAPILoader/SMAPIGameLoader/Assets/fonts"
+          BASE="https://raw.githubusercontent.com/google/fonts/aa235c2ef8d678e6f1d4797d1514fccfbe160c18/ofl/pixelifysans"
+          mkdir -p "$DIR"
+          curl -fsSL -o "$DIR/PixelifySans.ttf" "$BASE/PixelifySans%5Bwght%5D.ttf"
+          curl -fsSL -o "$DIR/PixelifySans-OFL.txt" "$BASE/OFL.txt"
+          echo "9ba86cd010a4de309d263ceff8e8044092c9db7efda869620cb9ff1c4389e8a5  $DIR/PixelifySans.ttf" | sha256sum -c -
+          echo "b66ba46f511a851ab09998b5a5a9fdbb102545a3864cb993095e1745996873a7  $DIR/PixelifySans-OFL.txt" | sha256sum -c -
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
