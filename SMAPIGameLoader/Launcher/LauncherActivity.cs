@@ -27,7 +27,8 @@ public class LauncherActivity : AppCompatActivity
     private static bool IsDeviceSupport => IntPtr.Size == 8;
 
     private HomePage _home = null!;
-    private View _mods = null!;
+    private ModsPage _mods = null!;
+    private SheetHost _sheet = null!;
     private NavBar _nav = null!;
 
     protected override void OnCreate(Bundle? savedInstanceState)
@@ -103,49 +104,44 @@ public class LauncherActivity : AppCompatActivity
 
         var shell = new Shell(this);
         var pages = new FrameLayout(this);
+        _sheet = new SheetHost(this);
 
         _nav = new NavBar(this, new[] { "Home", "Mods" }, new[] { "ic_home", "ic_grid" });
         _home = new HomePage(this, () => _nav.Select(1));
-        _mods = BuildModsPlaceholder();
+        _mods = new ModsPage(this, _sheet);
         pages.AddView(_home, new FrameLayout.LayoutParams(Ui.Match, Ui.Match));
         pages.AddView(_mods, new FrameLayout.LayoutParams(Ui.Match, Ui.Match));
 
         _nav.Picked += index =>
         {
+            _sheet.Hide();
             _home.Visibility = index == 0 ? ViewStates.Visible : ViewStates.Gone;
             _mods.Visibility = index == 1 ? ViewStates.Visible : ViewStates.Gone;
             if (index == 0)
                 _home.Refresh();
+            else
+                _mods.Reload();
         };
 
         shell.Body.AddView(pages, new LinearLayout.LayoutParams(Ui.Match, 0, 1f));
         shell.Body.AddView(_nav, new LinearLayout.LayoutParams(Ui.Match, Ui.Wrap));
+        shell.AddView(_sheet, new FrameLayout.LayoutParams(Ui.Match, Ui.Match));
         SetContentView(shell);
         _nav.Select(0);
-    }
-
-    // The mod manager is the next screen to be designed. Mods keep loading in the game meanwhile.
-    private View BuildModsPlaceholder()
-    {
-        var box = new LinearLayout(this) { Orientation = Orientation.Vertical };
-        box.SetGravity(GravityFlags.Center);
-        box.SetPadding(Ui.Dp(this, 32), 0, Ui.Dp(this, 32), 0);
-
-        var title = Ui.Label(this, "Mods", 30, Tokens.Text, Ui.Face.DisplayBold);
-        title.Gravity = GravityFlags.Center;
-        box.AddView(title, new LinearLayout.LayoutParams(Ui.Match, Ui.Wrap));
-
-        var body = Ui.Label(this, "The mod manager is the next screen to be designed. Your mods still load in the game.", 14, Tokens.Muted);
-        body.Gravity = GravityFlags.Center;
-        body.SetLineSpacing(0, 1.2f);
-        box.AddView(body, new LinearLayout.LayoutParams(Ui.Match, Ui.Wrap) { TopMargin = Ui.Dp(this, 10) });
-        return box;
     }
 
     protected override void OnResume()
     {
         base.OnResume();
         _home?.Refresh();
+    }
+
+    public override void OnBackPressed()
+    {
+        if (_sheet != null && _sheet.IsOpen)
+            _sheet.Hide();
+        else
+            base.OnBackPressed();
     }
 
     public void OnClickStartGame()

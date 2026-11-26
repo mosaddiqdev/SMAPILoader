@@ -13,36 +13,28 @@ using Orientation = Android.Widget.Orientation;
 
 namespace SMAPIGameLoader.Launcher;
 
-// Neutral charcoal. Text carries the hierarchy, colour is saved for one seasonal accent.
+// Neutral charcoal. Text carries the hierarchy. Red is the only loud colour and only appears for problems.
 public static class Tokens
 {
     public static readonly Color Bg = Color.ParseColor("#0F0F10");
     public static readonly Color Surface = Color.ParseColor("#151516");
+    public static readonly Color Elevated = Color.ParseColor("#1B1B1D");
+    public static readonly Color SegmentOn = Color.ParseColor("#232325");
     public static readonly Color Line = Color.ParseColor("#2A2A2C");
+    public static readonly Color LineStrong = Color.ParseColor("#343437");
     public static readonly Color Divider = Color.ParseColor("#242426");
+    public static readonly Color Track = Color.ParseColor("#2A2A2C");
     public static readonly Color Text = Color.ParseColor("#F2F1EE");
     public static readonly Color TextSoft = Color.ParseColor("#D9D8D3");
     public static readonly Color Muted = Color.ParseColor("#9A9994");
     public static readonly Color Dim = Color.ParseColor("#8E8D89");
     public static readonly Color Faint = Color.ParseColor("#6F6E6A");
+    public static readonly Color Ok = Color.ParseColor("#86A878");
+    public static readonly Color OkWash = Color.Argb(28, 134, 168, 120);
+    public static readonly Color OkEdge = Color.Argb(95, 134, 168, 120);
     public static readonly Color Danger = Color.ParseColor("#E0705A");
-
-    // The game's own calendar: spring, summer, fall, winter. Real months stand in for in-game days.
-    public static string SeasonName => DateTime.Now.Month switch
-    {
-        >= 3 and <= 5 => "Spring",
-        >= 6 and <= 8 => "Summer",
-        >= 9 and <= 11 => "Fall",
-        _ => "Winter",
-    };
-
-    public static Color SeasonColor => SeasonName switch
-    {
-        "Spring" => Color.ParseColor("#8FB07A"),
-        "Summer" => Color.ParseColor("#D4AE5A"),
-        "Fall" => Color.ParseColor("#C98A52"),
-        _ => Color.ParseColor("#8FA7B8"),
-    };
+    public static readonly Color DangerWash = Color.Argb(33, 224, 112, 90);
+    public static readonly Color DangerEdge = Color.Argb(115, 224, 112, 90);
 }
 
 internal static class Fonts
@@ -89,6 +81,7 @@ public static class Ui
     public static readonly int Wrap = ViewGroup.LayoutParams.WrapContent;
 
     public enum Face { Regular, Medium, Mono, Display, DisplayBold }
+    public enum Kind { Primary, Quiet, Danger }
 
     public static int Dp(Context context, float dp)
     {
@@ -168,5 +161,58 @@ public static class Ui
         view.SetImageDrawable(Icon(ctx, name, tint));
         view.LayoutParameters = new LinearLayout.LayoutParams(Dp(ctx, sizeDp), Dp(ctx, sizeDp));
         return view;
+    }
+
+    public static TextView Button(Context ctx, string text, Kind kind = Kind.Quiet, int heightDp = 44)
+    {
+        Color fill, ink;
+        Color? edge = null;
+        switch (kind)
+        {
+            case Kind.Primary:
+                fill = Tokens.Text;
+                ink = Tokens.Bg;
+                break;
+            case Kind.Danger:
+                fill = Tokens.Surface;
+                ink = Tokens.Danger;
+                edge = Tokens.LineStrong;
+                break;
+            default:
+                fill = Tokens.Surface;
+                ink = Tokens.Text;
+                edge = Tokens.LineStrong;
+                break;
+        }
+
+        var button = Label(ctx, text, 14, ink, Face.Medium);
+        button.Gravity = GravityFlags.Center;
+        button.SetMinHeight(Dp(ctx, heightDp));
+        button.SetPadding(Dp(ctx, 16), 0, Dp(ctx, 16), 0);
+        button.Background = Ripple(Box(ctx, fill, 12, edge), Box(ctx, Color.White, 12),
+            kind == Kind.Primary ? "#33000000" : "#22FFFFFF");
+        button.Clickable = true;
+        button.Focusable = true;
+        return button;
+    }
+
+    // Small caps caption over a monospace value, for ids and paths.
+    public static LinearLayout Field(Context ctx, string name, string value)
+    {
+        var field = new LinearLayout(ctx) { Orientation = Orientation.Vertical };
+        var caption = Label(ctx, name.ToUpperInvariant(), 11, Tokens.Faint, Face.Mono);
+        caption.LetterSpacing = 0.1f;
+        var text = Label(ctx, value, 12.5f, Tokens.TextSoft, Face.Mono);
+        text.SetTextIsSelectable(true);
+        field.AddView(caption);
+        field.AddView(text, new LinearLayout.LayoutParams(Match, Wrap) { TopMargin = Dp(ctx, 3) });
+        return field;
+    }
+
+    public static LinearLayout SheetBody(Context ctx)
+    {
+        var body = new LinearLayout(ctx) { Orientation = Orientation.Vertical };
+        body.SetPadding(Dp(ctx, 20), Dp(ctx, 4), Dp(ctx, 20), Dp(ctx, 24));
+        return body;
     }
 }
