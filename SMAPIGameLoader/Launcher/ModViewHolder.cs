@@ -136,6 +136,6 @@ internal class ModViewHolder : RecyclerView.ViewHolder
 
         var parts = new[] { mod.Author, mod.Version.Length > 0 ? mod.Version : "" };
         var meta = string.Join(" · ", parts.Where(p => p.Length > 0));
-        _meta.Text = meta.Length > 0 ? meta : Path.GetFileName(mod.ModFolderPath ?? "").TrimStart('.');
+        _meta.Text = meta.Length > 0 ? meta : System.IO.Path.GetFileName(mod.ModFolderPath ?? "").TrimStart('.');
     }
 }
