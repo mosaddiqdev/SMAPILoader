@@ -128,6 +128,11 @@ internal static class ModInstaller
             }
 
             ExtractModZipFile(pick.FileName, zip, ModsDirPath);
+
+            // note when each mod arrived, so the list can be sorted by it
+            foreach (var entry in manifests)
+                ModStamps.Record(Path.GetDirectoryName(entry.FullName));
+
             return new InstallResult(pick.FileName, names, null);
         }
         catch (Exception ex)

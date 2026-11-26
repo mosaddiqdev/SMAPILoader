@@ -1,8 +1,8 @@
-using Android.Animation;
 using Android.Content;
 using Android.Graphics;
 using Android.Text;
 using Android.Views;
+using Android.Views.Animations;
 using Android.Widget;
 using AndroidX.AppCompat.App;
 using System;
@@ -11,62 +11,6 @@ using System.Linq;
 using Xamarin.Essentials;
 
 namespace SMAPIGameLoader.Launcher;
-
-// The one big action. Off-white on charcoal, pixel title face, and a quiet sweep while the game starts.
-internal sealed class PlayButton : FrameLayout
-{
-    readonly TextView _label;
-    readonly View _sweep;
-    ObjectAnimator _animator;
-
-    public PlayButton(Context ctx) : base(ctx)
-    {
-        Background = Ui.Ripple(Ui.Box(ctx, Tokens.Text, 15), Ui.Box(ctx, Color.White, 15), "#33000000");
-        ClipToOutline = true;
-        OutlineProvider = ViewOutlineProvider.Background;
-        Clickable = true;
-        Focusable = true;
-
-        _label = Ui.Label(ctx, "Play", 22, Tokens.Bg, Ui.Face.DisplayBold);
-        AddView(_label, new LayoutParams(Ui.Wrap, Ui.Wrap) { Gravity = GravityFlags.Center });
-
-        // a dark line on the off-white button
-        _sweep = new View(ctx);
-        _sweep.SetBackgroundColor(Color.Argb(110, 15, 15, 16));
-        _sweep.Visibility = ViewStates.Gone;
-        AddView(_sweep, new LayoutParams(Ui.Dp(ctx, 120), Ui.Dp(ctx, 2)) { Gravity = GravityFlags.Bottom | GravityFlags.Start });
-    }
-
-    public void Set(string text, bool busy)
-    {
-        _label.Text = text;
-        if (busy)
-            StartSweep();
-        else
-            StopSweep();
-    }
-
-    void StartSweep()
-    {
-        if (_animator != null)
-            return;
-
-        _sweep.Visibility = ViewStates.Visible;
-        float travel = Resources.DisplayMetrics.WidthPixels;
-        _animator = ObjectAnimator.OfFloat(_sweep, "translationX", -travel * 0.4f, travel);
-        _animator.SetDuration(1100);
-        _animator.RepeatCount = ValueAnimator.Infinite;
-        _animator.Start();
-    }
-
-    void StopSweep()
-    {
-        _animator?.Cancel();
-        _animator = null;
-        _sweep.TranslationX = 0;
-        _sweep.Visibility = ViewStates.Gone;
-    }
-}
 
 internal sealed class HomePage : LinearLayout
 {
@@ -83,7 +27,8 @@ internal sealed class HomePage : LinearLayout
     readonly LinearLayout _loadout;
     readonly TextView _smapiNote;
     readonly TextView _smapiValue;
-    readonly PlayButton _play;
+    readonly Keycap _play;
+    readonly List<View> _entrance = new();
     bool _launching;
 
     public HomePage(Context ctx, Action openMods) : base(ctx)
@@ -159,15 +104,42 @@ internal sealed class HomePage : LinearLayout
         // pinned at the bottom, where the thumb already is
         var bar = new LinearLayout(ctx) { Orientation = Orientation.Vertical };
         bar.SetPadding(Ui.Dp(ctx, 22), Ui.Dp(ctx, 12), Ui.Dp(ctx, 22), Ui.Dp(ctx, 10));
-        _play = new PlayButton(ctx);
+        _play = new Keycap(ctx, 58, 16, 22, Ui.Face.DisplayBold);
         _play.Click += (_, _) => OnPlay();
-        bar.AddView(_play, new LayoutParams(Ui.Match, Ui.Dp(ctx, 58)));
+        bar.AddView(_play, new LayoutParams(Ui.Match, _play.TotalHeight));
         _note = Ui.Label(ctx, "", 12, Tokens.Dim);
         _note.Gravity = GravityFlags.Center;
         bar.AddView(_note, new LayoutParams(Ui.Match, Ui.Wrap) { TopMargin = Ui.Dp(ctx, 10) });
         AddView(bar, new LayoutParams(Ui.Match, Ui.Wrap));
 
+        _entrance.Add(identity);
+        _entrance.Add(_status);
+        _entrance.Add(_loadoutSection);
+        _entrance.Add(smapi);
+        _entrance.Add(bar);
+
         Refresh();
+    }
+
+    // Each block rises into place a beat after the one before it. Played once, when the launcher opens.
+    public void Enter()
+    {
+        float rise = Ui.Dp(_ctx, 14);
+        for (int i = 0; i < _entrance.Count; i++)
+        {
+            var view = _entrance[i];
+            float target = view == _loadoutSection && !SMAPIInstaller.IsInstalled ? 0.4f : 1f;
+
+            view.Alpha = 0f;
+            view.TranslationY = rise;
+            view.Animate()
+                .Alpha(target)
+                .TranslationY(0f)
+                .SetStartDelay(i * 55)
+                .SetDuration(300)
+                .SetInterpolator(new DecelerateInterpolator())
+                .Start();
+        }
     }
 
     // Called whenever the launcher comes back to the front, so a finished launch resets the button.

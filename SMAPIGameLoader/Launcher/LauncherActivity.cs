@@ -42,11 +42,13 @@ public class LauncherActivity : AppCompatActivity
         if (AssertRequirement() == false)
             return;
 
-        SetupPages();
+        // The activity is rebuilt when the phone rotates. Only a fresh start plays the entrance
+        // and may auto-launch the game.
+        bool fresh = savedInstanceState == null;
+        SetupPages(fresh);
         AppCompatDelegate.DefaultNightMode = AppCompatDelegate.ModeNightYes;
 
-        // The activity is rebuilt when the phone rotates. Only a fresh start may auto-launch the game.
-        if (savedInstanceState == null)
+        if (fresh)
             ProcessAdbExtras();
     }
 
@@ -97,7 +99,7 @@ public class LauncherActivity : AppCompatActivity
         return true;
     }
 
-    private void SetupPages()
+    private void SetupPages(bool playEntrance)
     {
         // draw behind the system bars; Shell pads the content back inside them
         WindowCompat.SetDecorFitsSystemWindows(Window, false);
@@ -115,8 +117,18 @@ public class LauncherActivity : AppCompatActivity
         _nav.Picked += index =>
         {
             _sheet.Hide();
-            _home.Visibility = index == 0 ? ViewStates.Visible : ViewStates.Gone;
-            _mods.Visibility = index == 1 ? ViewStates.Visible : ViewStates.Gone;
+            View show = index == 0 ? _home : _mods;
+            View hide = index == 0 ? _mods : _home;
+
+            // a short crossfade instead of a hard cut
+            if (show.Visibility != ViewStates.Visible)
+            {
+                show.Alpha = 0f;
+                show.Visibility = ViewStates.Visible;
+                show.Animate().Alpha(1f).SetDuration(150).Start();
+            }
+            hide.Visibility = ViewStates.Gone;
+
             if (index == 0)
                 _home.Refresh();
             else
@@ -128,6 +140,9 @@ public class LauncherActivity : AppCompatActivity
         shell.AddView(_sheet, new FrameLayout.LayoutParams(Ui.Match, Ui.Match));
         SetContentView(shell);
         _nav.Select(0);
+
+        if (playEntrance)
+            _home.Enter();
     }
 
     protected override void OnResume()
