@@ -2,7 +2,6 @@ using Android.Animation;
 using Android.Content;
 using Android.Graphics;
 using Android.Text;
-using Android.Text.Style;
 using Android.Views;
 using Android.Widget;
 using AndroidX.AppCompat.App;
@@ -31,7 +30,9 @@ internal sealed class PlayButton : FrameLayout
         _label = Ui.Label(ctx, "Play", 22, Tokens.Bg, Ui.Face.DisplayBold);
         AddView(_label, new LayoutParams(Ui.Wrap, Ui.Wrap) { Gravity = GravityFlags.Center });
 
+        // a dark line on the off-white button
         _sweep = new View(ctx);
+        _sweep.SetBackgroundColor(Color.Argb(110, 15, 15, 16));
         _sweep.Visibility = ViewStates.Gone;
         AddView(_sweep, new LayoutParams(Ui.Dp(ctx, 120), Ui.Dp(ctx, 2)) { Gravity = GravityFlags.Bottom | GravityFlags.Start });
     }
@@ -50,7 +51,6 @@ internal sealed class PlayButton : FrameLayout
         if (_animator != null)
             return;
 
-        _sweep.SetBackgroundColor(Season.Color);
         _sweep.Visibility = ViewStates.Visible;
         float travel = Resources.DisplayMetrics.WidthPixels;
         _animator = ObjectAnimator.OfFloat(_sweep, "translationX", -travel * 0.4f, travel);
@@ -193,15 +193,7 @@ internal sealed class HomePage : LinearLayout
             var version = StardewApkTool.CurrentGameVersion;
             string smapiVersion = SmapiVersion();
 
-            // greeting from the clock, date from the farm (or the phone calendar if there is no save yet)
-            Season.Refresh();
-            string hello = Greeting();
-            string place = Season.Farm is FarmDate farm ? $"{farm.Season} {farm.Day}, Year {farm.Year}" : Season.Name;
-            var greeting = new SpannableString($"{hello} · {place}");
-            int seasonStart = hello.Length + 3;
-            greeting.SetSpan(new ForegroundColorSpan(Season.Color), seasonStart, seasonStart + Season.Name.Length, SpanTypes.ExclusiveExclusive);
-            _greeting.TextFormatted = greeting;
-
+            _greeting.Text = Greeting();
             _meta.Text = smapi ? $"{version} · SMAPI {smapiVersion}" : $"{version} · SMAPI not installed";
             ShowGameIcon();
 
