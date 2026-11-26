@@ -16,6 +16,7 @@ using Orientation = Android.Widget.Orientation;
 namespace SMAPIGameLoader.Launcher;
 
 // One mod: name, a compatibility label next to author and version, and the switch.
+// Tapping the row opens the mod's drawer, which is where the reasons live.
 internal class ModViewHolder : RecyclerView.ViewHolder
 {
     readonly TextView _name;
@@ -36,7 +37,7 @@ internal class ModViewHolder : RecyclerView.ViewHolder
 
         var row = new LinearLayout(ctx) { Orientation = Orientation.Horizontal };
         row.SetGravity(GravityFlags.CenterVertical);
-        row.SetPadding(Ui.Dp(ctx, 16), Ui.Dp(ctx, 8), Ui.Dp(ctx, 12), Ui.Dp(ctx, 8));
+        row.SetPadding(Ui.Dp(ctx, 16), Ui.Dp(ctx, 11), Ui.Dp(ctx, 12), Ui.Dp(ctx, 11));
 
         var text = new LinearLayout(ctx) { Orientation = Orientation.Vertical };
         var name = Ui.Label(ctx, "", 15, Tokens.Text, Ui.Face.Medium);
@@ -49,15 +50,14 @@ internal class ModViewHolder : RecyclerView.ViewHolder
         line.SetGravity(GravityFlags.CenterVertical);
 
         var badge = Ui.Label(ctx, "", 11, Tokens.Ok, Ui.Face.Medium);
-        var badgeHolder = new LinearLayout(ctx) { Clickable = true };
-        badgeHolder.SetPadding(0, Ui.Dp(ctx, 5), Ui.Dp(ctx, 4), Ui.Dp(ctx, 5));
+        var badgeHolder = new LinearLayout(ctx);
         badgeHolder.AddView(badge);
-        line.AddView(badgeHolder);
+        line.AddView(badgeHolder, new LinearLayout.LayoutParams(Ui.Wrap, Ui.Wrap) { TopMargin = Ui.Dp(ctx, 3) });
 
         var meta = Ui.Label(ctx, "", 12, Tokens.Dim);
         meta.SetSingleLine(true);
         meta.Ellipsize = TextUtils.TruncateAt.End;
-        line.AddView(meta, new LinearLayout.LayoutParams(0, Ui.Wrap, 1f));
+        line.AddView(meta, new LinearLayout.LayoutParams(0, Ui.Wrap, 1f) { TopMargin = Ui.Dp(ctx, 3) });
 
         text.AddView(line, new LinearLayout.LayoutParams(Ui.Match, Ui.Wrap));
         row.AddView(text, new LinearLayout.LayoutParams(0, Ui.Wrap, 1f) { RightMargin = Ui.Dp(ctx, 12) });
@@ -78,11 +78,6 @@ internal class ModViewHolder : RecyclerView.ViewHolder
             if (holder._mod != null)
                 onOpen(holder._mod);
         });
-        badgeHolder.Click += (_, _) =>
-        {
-            if (holder._mod != null)
-                CompatUi.ShowTip(holder._badge, holder._mod);
-        };
         return holder;
     }
 
@@ -102,6 +97,7 @@ internal class ModViewHolder : RecyclerView.ViewHolder
         _toggle.CheckedChange += (_, e) =>
         {
             if (_binding || _mod == null) return;
+            _toggle.PerformHapticFeedback(e.IsChecked ? FeedbackConstants.ToggleOn : FeedbackConstants.ToggleOff);
             _mod.Enabled = e.IsChecked;
             _onToggled(_mod);
 
@@ -136,6 +132,6 @@ internal class ModViewHolder : RecyclerView.ViewHolder
 
         var parts = new[] { mod.Author, mod.Version.Length > 0 ? mod.Version : "" };
         var meta = string.Join(" · ", parts.Where(p => p.Length > 0));
-        _meta.Text = meta.Length > 0 ? meta : System.IO.Path.GetFileName(mod.ModFolderPath ?? "").TrimStart('.');
+        _meta.Text = meta.Length > 0 ? meta : Path.GetFileName(mod.ModFolderPath ?? "").TrimStart('.');
     }
 }

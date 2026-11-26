@@ -4,18 +4,24 @@ using Android.Text;
 using Android.Text.Style;
 using Android.Util;
 using Android.Views;
+using Android.Views.InputMethods;
 using Android.Widget;
 using AndroidX.AppCompat.App;
 using AndroidX.RecyclerView.Widget;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Xamarin.Essentials;
 
 namespace SMAPIGameLoader.Launcher;
 
 internal sealed class ModsPage : LinearLayout
 {
     enum Filter { All, On, Off, Issues }
+    enum SortMode { NameAsc, NameDesc, Newest, Oldest }
+
+    const string SortKey = "mods_sort";
+    static readonly string[] SortNames = { "Name, A to Z", "Name, Z to A", "Recently added", "Oldest first" };
 
     readonly Context _ctx;
     readonly SheetHost _sheet;
@@ -29,9 +35,10 @@ internal sealed class ModsPage : LinearLayout
     readonly LinearLayout _empty;
     readonly TextView _emptyTitle;
     readonly TextView _emptyBody;
-    readonly TextView _emptyAction;
+    readonly Keycap _emptyAction;
     List<ModInfo> _all = new();
     Filter _filter = Filter.All;
+    SortMode _sort;
     Action _emptyTap;
 
     // turned on but can't load: the only mods that need your attention
@@ -41,20 +48,18 @@ internal sealed class ModsPage : LinearLayout
     {
         _ctx = ctx;
         _sheet = sheet;
+        _sort = (SortMode)Math.Clamp(Preferences.Get(SortKey, 0), 0, SortNames.Length - 1);
         Orientation = Orientation.Vertical;
         int edge = Ui.Dp(ctx, 20);
 
-        // Landscape is short. Title, search, filter and Add share one row so the list keeps the height.
+        // Landscape is short. Title, search, filter, sort and Add share one row so the list keeps the height.
         bool landscape = ctx.Resources.Configuration.Orientation == Android.Content.Res.Orientation.Landscape;
 
         var title = Ui.Label(ctx, "Mods", landscape ? 26 : 34, Tokens.Text, Ui.Face.DisplayBold);
 
-        var add = Ui.Button(ctx, "Add", Ui.Kind.Primary, 38);
-        var plus = Ui.Icon(ctx, "ic_plus", Tokens.Bg);
-        plus.SetBounds(0, 0, Ui.Dp(ctx, 16), Ui.Dp(ctx, 16));
-        add.SetCompoundDrawables(plus, null, null, null);
-        add.CompoundDrawablePadding = Ui.Dp(ctx, 6);
-        add.SetPadding(Ui.Dp(ctx, 12), 0, Ui.Dp(ctx, 16), 0);
+        var add = new Keycap(ctx, 38, 12, 14, Ui.Face.Medium);
+        add.SetLabel("Add");
+        add.SetIcon(Ui.Icon(ctx, "ic_plus", Tokens.Bg));
         add.Click += (_, _) => AddMod();
 
         _summary = Ui.Label(ctx, "", 13, Tokens.Muted);
@@ -73,6 +78,7 @@ internal sealed class ModsPage : LinearLayout
         _search.SetTextColor(Tokens.Text);
         _search.SetHintTextColor(Tokens.Faint);
         _search.Background = null;
+        _search.ImeOptions = ImeAction.Done;
         _search.SetPadding(Ui.Dp(ctx, 10), searchPad, Ui.Dp(ctx, 10), searchPad);
         searchBox.AddView(_search, new LayoutParams(0, Ui.Wrap, 1f));
 
@@ -87,6 +93,12 @@ internal sealed class ModsPage : LinearLayout
         {
             _clear.Visibility = string.IsNullOrEmpty(_search.Text) ? ViewStates.Gone : ViewStates.Visible;
             ApplyFilter();
+        };
+        // Done closes the keyboard and keeps the results
+        _search.EditorAction += (_, e) =>
+        {
+            HideKeyboard();
+            e.Handled = true;
         };
 
         // one segmented control instead of loose chips
@@ -109,6 +121,15 @@ internal sealed class ModsPage : LinearLayout
             _segments[i] = segment;
         }
 
+        // the sort button sits at the end of the filter row
+        var sort = Ui.IconView(ctx, "ic_sort", Tokens.Text, 40);
+        sort.SetPadding(Ui.Dp(ctx, 11), Ui.Dp(ctx, 11), Ui.Dp(ctx, 11), Ui.Dp(ctx, 11));
+        sort.Background = Ui.Ripple(Ui.Box(ctx, Tokens.Surface, 11, Tokens.Line), Ui.Box(ctx, Color.White, 11));
+        sort.Clickable = true;
+        sort.Focusable = true;
+        sort.ContentDescription = "Sort mods";
+        sort.Click += (_, _) => OpenSort();
+
         if (landscape)
         {
             var bar = new LinearLayout(ctx) { Orientation = Orientation.Horizontal };
@@ -120,8 +141,9 @@ internal sealed class ModsPage : LinearLayout
                 LeftMargin = Ui.Dp(ctx, 16),
                 RightMargin = Ui.Dp(ctx, 12)
             });
-            bar.AddView(segmented, new LayoutParams(Ui.Wrap, Ui.Wrap) { RightMargin = Ui.Dp(ctx, 12) });
-            bar.AddView(add, new LayoutParams(Ui.Wrap, Ui.Wrap));
+            bar.AddView(segmented, new LayoutParams(Ui.Wrap, Ui.Wrap) { RightMargin = Ui.Dp(ctx, 8) });
+            bar.AddView(sort, new LayoutParams(Ui.Dp(ctx, 40), Ui.Dp(ctx, 40)) { RightMargin = Ui.Dp(ctx, 12) });
+            bar.AddView(add, new LayoutParams(Ui.Wrap, add.TotalHeight));
             AddView(bar, new LayoutParams(Ui.Match, Ui.Wrap));
         }
         else
@@ -130,7 +152,7 @@ internal sealed class ModsPage : LinearLayout
             header.SetGravity(GravityFlags.CenterVertical);
             header.SetPadding(edge, Ui.Dp(ctx, 20), edge, 0);
             header.AddView(title, new LayoutParams(0, Ui.Wrap, 1f));
-            header.AddView(add, new LayoutParams(Ui.Wrap, Ui.Wrap));
+            header.AddView(add, new LayoutParams(Ui.Wrap, add.TotalHeight));
             AddView(header, new LayoutParams(Ui.Match, Ui.Wrap));
 
             AddView(_summary, new LayoutParams(Ui.Match, Ui.Wrap) { TopMargin = Ui.Dp(ctx, 6) });
@@ -140,7 +162,12 @@ internal sealed class ModsPage : LinearLayout
                 RightMargin = edge,
                 TopMargin = Ui.Dp(ctx, 14)
             });
-            AddView(segmented, new LayoutParams(Ui.Match, Ui.Wrap)
+
+            var filterRow = new LinearLayout(ctx) { Orientation = Orientation.Horizontal };
+            filterRow.SetGravity(GravityFlags.CenterVertical);
+            filterRow.AddView(segmented, new LayoutParams(0, Ui.Wrap, 1f) { RightMargin = Ui.Dp(ctx, 8) });
+            filterRow.AddView(sort, new LayoutParams(Ui.Dp(ctx, 40), Ui.Dp(ctx, 40)));
+            AddView(filterRow, new LayoutParams(Ui.Match, Ui.Wrap)
             {
                 LeftMargin = edge,
                 RightMargin = edge,
@@ -174,10 +201,9 @@ internal sealed class ModsPage : LinearLayout
         _emptyBody.SetLineSpacing(0, 1.2f);
         _empty.AddView(_emptyBody, new LayoutParams(Ui.Match, Ui.Wrap) { TopMargin = Ui.Dp(ctx, 8) });
 
-        _emptyAction = Ui.Button(ctx, "", Ui.Kind.Primary, 46);
-        _emptyAction.SetPadding(Ui.Dp(ctx, 24), 0, Ui.Dp(ctx, 24), 0);
+        _emptyAction = new Keycap(ctx, 46, 13, 15, Ui.Face.Medium);
         _emptyAction.Click += (_, _) => _emptyTap?.Invoke();
-        _empty.AddView(_emptyAction, new LayoutParams(Ui.Wrap, Ui.Wrap) { TopMargin = Ui.Dp(ctx, landscape ? 14 : 22) });
+        _empty.AddView(_emptyAction, new LayoutParams(Ui.Wrap, _emptyAction.TotalHeight) { TopMargin = Ui.Dp(ctx, landscape ? 14 : 22) });
 
         _empty.Visibility = ViewStates.Gone;
         body.AddView(_empty, new FrameLayout.LayoutParams(Ui.Match, Ui.Match));
@@ -190,6 +216,25 @@ internal sealed class ModsPage : LinearLayout
     {
         _all = ModLibrary.Scan();
         ApplyFilter();
+    }
+
+    void HideKeyboard()
+    {
+        var imm = (InputMethodManager)_ctx.GetSystemService(Context.InputMethodService);
+        imm?.HideSoftInputFromWindow(_search.WindowToken, HideSoftInputFlags.None);
+        _search.ClearFocus();
+    }
+
+    IEnumerable<ModInfo> Sorted(IEnumerable<ModInfo> items)
+    {
+        var byName = StringComparer.OrdinalIgnoreCase;
+        return _sort switch
+        {
+            SortMode.NameDesc => items.OrderByDescending(m => m.Name, byName),
+            SortMode.Newest => items.OrderByDescending(ModStamps.For).ThenBy(m => m.Name, byName),
+            SortMode.Oldest => items.OrderBy(ModStamps.For).ThenBy(m => m.Name, byName),
+            _ => items.OrderBy(m => m.Name, byName),
+        };
     }
 
     void ApplyFilter()
@@ -216,11 +261,8 @@ internal sealed class ModsPage : LinearLayout
                 m.UniqueId.Contains(query, StringComparison.OrdinalIgnoreCase));
         }
 
-        // problems first, then A to Z. Off mods stay in the list, just dimmed.
-        var shown = items
-            .OrderByDescending(Issue)
-            .ThenBy(m => m.Name, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        // exactly the order you picked. Off mods stay in the list, just dimmed.
+        var shown = Sorted(items).ToList();
 
         _adapter.Replace(shown);
         UpdateHeader();
@@ -235,14 +277,14 @@ internal sealed class ModsPage : LinearLayout
         {
             _emptyTitle.Text = "No mods yet";
             _emptyBody.Text = "Add mod zips and the launcher unpacks them for you. You can pick several at once.";
-            _emptyAction.Text = "Add mods";
+            _emptyAction.SetLabel("Add mods");
             _emptyTap = AddMod;
         }
         else
         {
             _emptyTitle.Text = "No results";
             _emptyBody.Text = query.Length > 0 ? $"Nothing matches “{query}”." : "No mods in this view.";
-            _emptyAction.Text = "Clear filters";
+            _emptyAction.SetLabel("Clear filters");
             _emptyTap = () =>
             {
                 _filter = Filter.All;
@@ -298,8 +340,47 @@ internal sealed class ModsPage : LinearLayout
 
     LayoutParams Gap(int dp) => new LayoutParams(Ui.Match, Ui.Wrap) { TopMargin = Ui.Dp(_ctx, dp) };
 
+    void OpenSort()
+    {
+        HideKeyboard();
+
+        var body = Ui.SheetBody(_ctx);
+        body.AddView(Ui.Label(_ctx, "Sort mods", 24, Tokens.Text, Ui.Face.DisplayBold));
+
+        var panel = Ui.Panel(_ctx);
+        for (int i = 0; i < SortNames.Length; i++)
+        {
+            var mode = (SortMode)i;
+            bool selected = mode == _sort;
+
+            var row = new LinearLayout(_ctx) { Orientation = Orientation.Horizontal };
+            row.SetGravity(GravityFlags.CenterVertical);
+            row.SetPadding(Ui.Dp(_ctx, 16), Ui.Dp(_ctx, 15), Ui.Dp(_ctx, 16), Ui.Dp(_ctx, 15));
+            row.AddView(Ui.Label(_ctx, SortNames[i], 15, selected ? Tokens.Text : Tokens.TextSoft, Ui.Face.Medium),
+                new LayoutParams(0, Ui.Wrap, 1f));
+            if (selected)
+                row.AddView(Ui.IconView(_ctx, "ic_check", Tokens.Text, 18));
+
+            Ui.MakeTappable(row, () =>
+            {
+                _sort = mode;
+                Preferences.Set(SortKey, (int)mode);
+                _sheet.Hide();
+                ApplyFilter();
+            });
+
+            if (i > 0)
+                panel.AddView(Ui.Divider(_ctx));
+            panel.AddView(row);
+        }
+        body.AddView(panel, Gap(14));
+        _sheet.Show(body);
+    }
+
     void OpenDetail(ModInfo mod)
     {
+        HideKeyboard();
+
         var body = Ui.SheetBody(_ctx);
         body.AddView(Ui.Label(_ctx, mod.Name, 26, Tokens.Text, Ui.Face.DisplayBold));
 
@@ -323,6 +404,17 @@ internal sealed class ModsPage : LinearLayout
                 var text = Ui.Label(_ctx, line, 13, ok ? Tokens.Muted : Tokens.TextSoft);
                 text.SetLineSpacing(0, 1.15f);
                 compat.AddView(text, Gap(8));
+            }
+
+            // the one caveat worth saying out loud
+            string note = ok
+                ? "Checked against the mod’s manifest. Whether its code runs on Android can’t be checked here."
+                : !mod.Enabled ? "This mod is turned off, so it can’t cause trouble until you turn it on." : null;
+            if (note != null)
+            {
+                var caveat = Ui.Label(_ctx, note, 12, Tokens.Faint);
+                caveat.SetLineSpacing(0, 1.15f);
+                compat.AddView(caveat, Gap(10));
             }
             body.AddView(compat, Gap(14));
         }
