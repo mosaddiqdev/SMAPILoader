@@ -12,6 +12,7 @@ using Xamarin.Essentials;
 
 namespace SMAPIGameLoader.Launcher;
 
+// Home. The Play action lives in the dock, so this page only reports what the key should say.
 internal sealed class HomePage : LinearLayout
 {
     const string LastPlayedKey = "last_played";
@@ -27,9 +28,14 @@ internal sealed class HomePage : LinearLayout
     readonly LinearLayout _loadout;
     readonly TextView _smapiNote;
     readonly TextView _smapiValue;
-    readonly Keycap _play;
     readonly List<View> _entrance = new();
     bool _launching;
+    string _keyLabel = "Play";
+    bool _keyBusy;
+
+    // what the dock's key should show while Home is the current page
+    public event Action<string, bool> KeyChanged;
+    public void PushKey() => KeyChanged?.Invoke(_keyLabel, _keyBusy);
 
     public HomePage(Context ctx, Action openMods) : base(ctx)
     {
@@ -69,6 +75,9 @@ internal sealed class HomePage : LinearLayout
         _status.SetLineSpacing(0, 1.15f);
         content.AddView(_status, new LayoutParams(Ui.Match, Ui.Wrap) { TopMargin = Ui.Dp(ctx, 16) });
 
+        _note = Ui.Label(ctx, "", 12, Tokens.Dim);
+        content.AddView(_note, new LayoutParams(Ui.Match, Ui.Wrap) { TopMargin = Ui.Dp(ctx, 5) });
+
         // loadout: what will load
         _loadoutSection = new LinearLayout(ctx) { Orientation = Orientation.Vertical };
         var header = new LinearLayout(ctx) { Orientation = Orientation.Horizontal };
@@ -82,7 +91,7 @@ internal sealed class HomePage : LinearLayout
 
         _loadout = Ui.Panel(ctx);
         _loadoutSection.AddView(_loadout, new LayoutParams(Ui.Match, Ui.Wrap));
-        content.AddView(_loadoutSection, new LayoutParams(Ui.Match, Ui.Wrap) { TopMargin = Ui.Dp(ctx, 26) });
+        content.AddView(_loadoutSection, new LayoutParams(Ui.Match, Ui.Wrap) { TopMargin = Ui.Dp(ctx, 24) });
 
         // SMAPI
         var smapi = Ui.Panel(ctx);
@@ -101,22 +110,11 @@ internal sealed class HomePage : LinearLayout
         smapi.AddView(smapiRow);
         content.AddView(smapi, new LayoutParams(Ui.Match, Ui.Wrap) { TopMargin = Ui.Dp(ctx, 12) });
 
-        // pinned at the bottom, where the thumb already is
-        var bar = new LinearLayout(ctx) { Orientation = Orientation.Vertical };
-        bar.SetPadding(Ui.Dp(ctx, 22), Ui.Dp(ctx, 12), Ui.Dp(ctx, 22), Ui.Dp(ctx, 10));
-        _play = new Keycap(ctx, 58, 16, 22, Ui.Face.DisplayBold);
-        _play.Click += (_, _) => OnPlay();
-        bar.AddView(_play, new LayoutParams(Ui.Match, _play.TotalHeight));
-        _note = Ui.Label(ctx, "", 12, Tokens.Dim);
-        _note.Gravity = GravityFlags.Center;
-        bar.AddView(_note, new LayoutParams(Ui.Match, Ui.Wrap) { TopMargin = Ui.Dp(ctx, 10) });
-        AddView(bar, new LayoutParams(Ui.Match, Ui.Wrap));
-
         _entrance.Add(identity);
         _entrance.Add(_status);
+        _entrance.Add(_note);
         _entrance.Add(_loadoutSection);
         _entrance.Add(smapi);
-        _entrance.Add(bar);
 
         Refresh();
     }
@@ -142,7 +140,7 @@ internal sealed class HomePage : LinearLayout
         }
     }
 
-    // Called whenever the launcher comes back to the front, so a finished launch resets the button.
+    // Called whenever the launcher comes back to the front, so a finished launch resets the key.
     public void Refresh()
     {
         _launching = false;
@@ -198,20 +196,24 @@ internal sealed class HomePage : LinearLayout
 
             if (_launching)
             {
-                _play.Set("Starting…", true);
+                _keyLabel = "Starting…";
+                _keyBusy = true;
                 _note.Text = "This takes a few seconds";
             }
             else if (!smapi)
             {
-                _play.Set("Install SMAPI", false);
+                _keyLabel = "Install SMAPI";
+                _keyBusy = false;
                 _note.Text = "Pick the SMAPI zip made for Android";
             }
             else
             {
-                _play.Set("Play", false);
+                _keyLabel = "Play";
+                _keyBusy = false;
                 var last = Preferences.Get(LastPlayedKey, DateTime.MinValue);
                 _note.Text = last == DateTime.MinValue ? "Ready when you are" : "Last played " + Ago(last);
             }
+            PushKey();
         }
         catch (Exception ex)
         {
@@ -300,7 +302,8 @@ internal sealed class HomePage : LinearLayout
         _loadout.AddView(row);
     }
 
-    void OnPlay()
+    // Called by the dock's key while Home is the current page.
+    public void Play()
     {
         if (_launching)
             return;
@@ -316,8 +319,8 @@ internal sealed class HomePage : LinearLayout
         Preferences.Set(LastPlayedKey, DateTime.UtcNow);
         LauncherActivity.Instance.OnClickStartGame();
 
-        // if the game never opened (an error toast, say), don't leave the button stuck
-        _play.PostDelayed(() =>
+        // if the game never opened (an error toast, say), don't leave the key stuck
+        PostDelayed(() =>
         {
             if (_launching)
                 Refresh();
