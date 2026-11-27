@@ -1,5 +1,6 @@
 using Android.Content;
 using Android.Graphics;
+using Android.Graphics.Drawables;
 using Android.Views;
 using Android.Widget;
 using System;
@@ -96,18 +97,13 @@ internal sealed class Dock : LinearLayout
             : new LayoutParams(0, Key.TotalHeight, 1f) { LeftMargin = Ui.Dp(ctx, 10) });
     }
 
-    GradientBackground TabBackground(bool selected)
+    // the chosen tab gets a raised background, the rest only a ripple
+    Drawable TabBackground(bool selected)
     {
-        return new GradientBackground(selected
-            ? Ui.Ripple(Ui.Box(_ctx, Tokens.SegmentOn, 16, Tokens.LineStrong), Ui.Box(_ctx, Color.White, 16))
-            : Ui.Ripple(null, Ui.Box(_ctx, Color.White, 16)));
-    }
-
-    // thin wrapper only so the two branches above share one return type
-    readonly struct GradientBackground
-    {
-        public readonly Android.Graphics.Drawables.Drawable Value;
-        public GradientBackground(Android.Graphics.Drawables.Drawable value) => Value = value;
+        var mask = Ui.Box(_ctx, Color.White, 16);
+        return selected
+            ? Ui.Ripple(Ui.Box(_ctx, Tokens.SegmentOn, 16, Tokens.LineStrong), mask)
+            : Ui.Ripple(null, mask);
     }
 
     public void Select(int index)
@@ -125,7 +121,7 @@ internal sealed class Dock : LinearLayout
             bool on = i == index;
             _icons[i].Drawable?.SetTint(on ? Tokens.Text : Tokens.Faint);
             _labels[i].Visibility = on ? ViewStates.Visible : ViewStates.Gone;
-            _tabs[i].Background = TabBackground(on).Value;
+            _tabs[i].Background = TabBackground(on);
         }
         Picked?.Invoke(index);
     }

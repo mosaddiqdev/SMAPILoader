@@ -15,6 +15,7 @@ using Xamarin.Essentials;
 
 namespace SMAPIGameLoader.Launcher;
 
+// Mods. Adding a mod is the dock's key while this page is open, so there is no Add button up here.
 internal sealed class ModsPage : LinearLayout
 {
     enum Filter { All, On, Off, Issues }
@@ -35,11 +36,10 @@ internal sealed class ModsPage : LinearLayout
     readonly LinearLayout _empty;
     readonly TextView _emptyTitle;
     readonly TextView _emptyBody;
-    readonly Keycap _emptyAction;
+    readonly TextView _emptyAction;
     List<ModInfo> _all = new();
     Filter _filter = Filter.All;
     SortMode _sort;
-    Action _emptyTap;
 
     // turned on but can't load: the only mods that need your attention
     static bool Issue(ModInfo mod) => mod.Enabled && mod.Compat?.Level == CompatLevel.Incompatible;
@@ -52,15 +52,10 @@ internal sealed class ModsPage : LinearLayout
         Orientation = Orientation.Vertical;
         int edge = Ui.Dp(ctx, 20);
 
-        // Landscape is short. Title, search, filter, sort and Add share one row so the list keeps the height.
+        // Landscape is short. Title, search, filter and sort share one row so the list keeps the height.
         bool landscape = ctx.Resources.Configuration.Orientation == Android.Content.Res.Orientation.Landscape;
 
         var title = Ui.Label(ctx, "Mods", landscape ? 26 : 34, Tokens.Text, Ui.Face.DisplayBold);
-
-        var add = new Keycap(ctx, 38, 12, 14, Ui.Face.Medium);
-        add.SetLabel("Add");
-        add.SetIcon(Ui.Icon(ctx, "ic_plus", Tokens.Bg));
-        add.Click += (_, _) => AddMod();
 
         _summary = Ui.Label(ctx, "", 13, Tokens.Muted);
         _summary.SetPadding(edge, 0, edge, 0);
@@ -142,8 +137,7 @@ internal sealed class ModsPage : LinearLayout
                 RightMargin = Ui.Dp(ctx, 12)
             });
             bar.AddView(segmented, new LayoutParams(Ui.Wrap, Ui.Wrap) { RightMargin = Ui.Dp(ctx, 8) });
-            bar.AddView(sort, new LayoutParams(Ui.Dp(ctx, 40), Ui.Dp(ctx, 40)) { RightMargin = Ui.Dp(ctx, 12) });
-            bar.AddView(add, new LayoutParams(Ui.Wrap, add.TotalHeight));
+            bar.AddView(sort, new LayoutParams(Ui.Dp(ctx, 40), Ui.Dp(ctx, 40)));
             AddView(bar, new LayoutParams(Ui.Match, Ui.Wrap));
         }
         else
@@ -152,7 +146,6 @@ internal sealed class ModsPage : LinearLayout
             header.SetGravity(GravityFlags.CenterVertical);
             header.SetPadding(edge, Ui.Dp(ctx, 20), edge, 0);
             header.AddView(title, new LayoutParams(0, Ui.Wrap, 1f));
-            header.AddView(add, new LayoutParams(Ui.Wrap, add.TotalHeight));
             AddView(header, new LayoutParams(Ui.Match, Ui.Wrap));
 
             AddView(_summary, new LayoutParams(Ui.Match, Ui.Wrap) { TopMargin = Ui.Dp(ctx, 6) });
@@ -201,9 +194,15 @@ internal sealed class ModsPage : LinearLayout
         _emptyBody.SetLineSpacing(0, 1.2f);
         _empty.AddView(_emptyBody, new LayoutParams(Ui.Match, Ui.Wrap) { TopMargin = Ui.Dp(ctx, 8) });
 
-        _emptyAction = new Keycap(ctx, 46, 13, 15, Ui.Face.Medium);
-        _emptyAction.Click += (_, _) => _emptyTap?.Invoke();
-        _empty.AddView(_emptyAction, new LayoutParams(Ui.Wrap, _emptyAction.TotalHeight) { TopMargin = Ui.Dp(ctx, landscape ? 14 : 22) });
+        // only used for "Clear filters". With no mods at all, the dock's Add mods key is the way forward.
+        _emptyAction = Ui.Button(ctx, "Clear filters", Ui.Kind.Quiet, 44);
+        _emptyAction.Click += (_, _) =>
+        {
+            _filter = Filter.All;
+            _search.Text = "";
+            ApplyFilter();
+        };
+        _empty.AddView(_emptyAction, new LayoutParams(Ui.Wrap, Ui.Wrap) { TopMargin = Ui.Dp(ctx, landscape ? 14 : 22) });
 
         _empty.Visibility = ViewStates.Gone;
         body.AddView(_empty, new FrameLayout.LayoutParams(Ui.Match, Ui.Match));
@@ -217,6 +216,9 @@ internal sealed class ModsPage : LinearLayout
         _all = ModLibrary.Scan();
         ApplyFilter();
     }
+
+    // Called by the dock's key while Mods is the current page.
+    public void Add() => ModInstaller.OnClickInstallMod(Reload);
 
     void HideKeyboard()
     {
@@ -276,21 +278,14 @@ internal sealed class ModsPage : LinearLayout
         if (_all.Count == 0)
         {
             _emptyTitle.Text = "No mods yet";
-            _emptyBody.Text = "Add mod zips and the launcher unpacks them for you. You can pick several at once.";
-            _emptyAction.SetLabel("Add mods");
-            _emptyTap = AddMod;
+            _emptyBody.Text = "Tap Add mods below. You can pick several zips at once and the launcher unpacks them for you.";
+            _emptyAction.Visibility = ViewStates.Gone;
         }
         else
         {
             _emptyTitle.Text = "No results";
             _emptyBody.Text = query.Length > 0 ? $"Nothing matches “{query}”." : "No mods in this view.";
-            _emptyAction.SetLabel("Clear filters");
-            _emptyTap = () =>
-            {
-                _filter = Filter.All;
-                _search.Text = "";
-                ApplyFilter();
-            };
+            _emptyAction.Visibility = ViewStates.Visible;
         }
     }
 
@@ -335,8 +330,6 @@ internal sealed class ModsPage : LinearLayout
         UpdateHeader();
         _list.Post(() => _adapter.NotifyDataSetChanged());
     }
-
-    void AddMod() => ModInstaller.OnClickInstallMod(Reload);
 
     LayoutParams Gap(int dp) => new LayoutParams(Ui.Match, Ui.Wrap) { TopMargin = Ui.Dp(_ctx, dp) };
 

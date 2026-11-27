@@ -29,7 +29,7 @@ public class LauncherActivity : AppCompatActivity
     private HomePage _home = null!;
     private ModsPage _mods = null!;
     private SheetHost _sheet = null!;
-    private NavBar _nav = null!;
+    private Dock _dock = null!;
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
@@ -108,13 +108,28 @@ public class LauncherActivity : AppCompatActivity
         var pages = new FrameLayout(this);
         _sheet = new SheetHost(this);
 
-        _nav = new NavBar(this, new[] { "Home", "Mods" }, new[] { "ic_home", "ic_grid" });
-        _home = new HomePage(this, () => _nav.Select(1));
+        _dock = new Dock(this, new[] { "Home", "Mods" }, new[] { "ic_home", "ic_grid" });
+        _home = new HomePage(this, () => _dock.Select(1));
         _mods = new ModsPage(this, _sheet);
         pages.AddView(_home, new FrameLayout.LayoutParams(Ui.Match, Ui.Match));
         pages.AddView(_mods, new FrameLayout.LayoutParams(Ui.Match, Ui.Match));
 
-        _nav.Picked += index =>
+        // Home says what the key should read (Play, Install SMAPI, Starting...), but only while it is the page on screen
+        _home.KeyChanged += (label, busy) =>
+        {
+            if (_dock.Current == 0)
+                _dock.Key.Set(label, busy);
+        };
+
+        _dock.Key.Click += (_, _) =>
+        {
+            if (_dock.Current == 0)
+                _home.Play();
+            else
+                _mods.Add();
+        };
+
+        _dock.Picked += index =>
         {
             _sheet.Hide();
             View show = index == 0 ? _home : _mods;
@@ -130,16 +145,21 @@ public class LauncherActivity : AppCompatActivity
             hide.Visibility = ViewStates.Gone;
 
             if (index == 0)
+            {
                 _home.Refresh();
+            }
             else
+            {
                 _mods.Reload();
+                _dock.Key.Set("Add mods", false);
+            }
         };
 
         shell.Body.AddView(pages, new LinearLayout.LayoutParams(Ui.Match, 0, 1f));
-        shell.Body.AddView(_nav, new LinearLayout.LayoutParams(Ui.Match, Ui.Wrap));
+        shell.Body.AddView(_dock, new LinearLayout.LayoutParams(Ui.Match, Ui.Wrap));
         shell.AddView(_sheet, new FrameLayout.LayoutParams(Ui.Match, Ui.Match));
         SetContentView(shell);
-        _nav.Select(0);
+        _dock.Select(0);
 
         if (playEntrance)
             _home.Enter();
