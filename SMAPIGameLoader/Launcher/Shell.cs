@@ -33,7 +33,7 @@ internal sealed class Shell : FrameLayout
     }
 }
 
-// The floating bottom dock. Two things float side by side: a small pill of tabs, and the one primary key.
+// The floating bottom dock. Two things float side by side: a dark pill of tabs, and the one primary key.
 // The selected tab opens up to show its name, the others stay icons. The key changes with the page:
 // Play on Home, Add mods on Mods. So the thumb always has the main action in the same place.
 internal sealed class Dock : LinearLayout
@@ -58,9 +58,12 @@ internal sealed class Dock : LinearLayout
         SetPadding(edge, Ui.Dp(ctx, 8), edge, Ui.Dp(ctx, 10));
         SetGravity(landscape ? GravityFlags.Bottom | GravityFlags.CenterHorizontal : GravityFlags.Bottom);
 
+        // the pill is the same height as the key, so the two sit level
+        const int rowHeight = 58;
+        float density = ctx.Resources.DisplayMetrics.Density;
         _pill = new LinearLayout(ctx) { Orientation = Orientation.Horizontal };
         _pill.SetGravity(GravityFlags.CenterVertical);
-        _pill.Background = Ui.Box(ctx, Tokens.Surface, 21, Tokens.Line);
+        _pill.Background = new BezelDrawable(BezelDrawable.Tone.Dark, Ui.Dp(ctx, rowHeight) / 2f, density);
         _pill.SetPadding(Ui.Dp(ctx, 5), Ui.Dp(ctx, 5), Ui.Dp(ctx, 5), Ui.Dp(ctx, 5));
 
         _tabs = new LinearLayout[names.Length];
@@ -71,7 +74,7 @@ internal sealed class Dock : LinearLayout
             int index = i;
             var tab = new LinearLayout(ctx) { Orientation = Orientation.Horizontal };
             tab.SetGravity(GravityFlags.CenterVertical);
-            tab.SetPadding(Ui.Dp(ctx, 14), 0, Ui.Dp(ctx, 14), 0);
+            tab.SetPadding(Ui.Dp(ctx, 15), 0, Ui.Dp(ctx, 15), 0);
             tab.Clickable = true;
             tab.Focusable = true;
             tab.ContentDescription = names[i];
@@ -83,15 +86,14 @@ internal sealed class Dock : LinearLayout
             tab.AddView(icon);
             tab.AddView(label, new LayoutParams(Ui.Wrap, Ui.Wrap) { LeftMargin = Ui.Dp(ctx, 8) });
 
-            _pill.AddView(tab, new LayoutParams(Ui.Wrap, Ui.Dp(ctx, 48)));
+            _pill.AddView(tab, new LayoutParams(Ui.Wrap, Ui.Dp(ctx, rowHeight - 10)));
             _tabs[i] = tab;
             _icons[i] = icon;
             _labels[i] = label;
         }
 
-        // the pill's bottom lines up with the key's face, not with the key's edge
-        Key = new Keycap(ctx, 58, 18, 20, Ui.Face.DisplayBold);
-        AddView(_pill, new LayoutParams(Ui.Wrap, Ui.Wrap) { BottomMargin = Ui.Dp(ctx, 3) });
+        Key = new Keycap(ctx, rowHeight, 20, Ui.Face.DisplayBold);
+        AddView(_pill, new LayoutParams(Ui.Wrap, Ui.Dp(ctx, rowHeight)));
         AddView(Key, landscape
             ? new LayoutParams(Ui.Dp(ctx, 220), Key.TotalHeight) { LeftMargin = Ui.Dp(ctx, 10) }
             : new LayoutParams(0, Key.TotalHeight, 1f) { LeftMargin = Ui.Dp(ctx, 10) });
@@ -100,9 +102,10 @@ internal sealed class Dock : LinearLayout
     // the chosen tab gets a raised background, the rest only a ripple
     Drawable TabBackground(bool selected)
     {
-        var mask = Ui.Box(_ctx, Color.White, 16);
+        float radius = Ui.Dp(_ctx, 24);
+        var mask = Ui.Box(_ctx, Color.White, 24);
         return selected
-            ? Ui.Ripple(Ui.Box(_ctx, Tokens.SegmentOn, 16, Tokens.LineStrong), mask)
+            ? Ui.Ripple(Ui.Box(_ctx, Tokens.SegmentOn, 24, Tokens.LineStrong), mask)
             : Ui.Ripple(null, mask);
     }
 
